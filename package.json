@@ -1,0 +1,15 @@
+{
+  "name": "arbejde",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Personlig dansk app til arbejdstid, akkord og lønoverblik.",
+  "type": "module",
+  "scripts": {
+    "start": "node serve.mjs",
+    "test": "node --test domain.test.js",
+    "check": "node check.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
