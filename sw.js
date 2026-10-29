@@ -1,8 +1,8 @@
 // Increment this version whenever app files change before publishing a release.
 const SCOPE = new URL(self.registration.scope);
 const PREFIX = 'arbejde-' + SCOPE.pathname + '-';
-const CACHE = PREFIX + 'v1-20261029';
-const ASSETS = ['index.html', 'app.js', 'styles.css', 'domain.js', 'panels.js', 'manifest.webmanifest', 'icon.svg'];
+const CACHE = PREFIX + 'v2-20261029';
+const ASSETS = ['index.html', 'app.js', 'styles.css', 'domain.js', 'panels.js', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png'];
 const scope = SCOPE;
 const indexURL = new URL('index.html', scope).href;
 const assetURLs = new Set(ASSETS.map(path => new URL(path, scope).href));
