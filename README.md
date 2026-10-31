@@ -1,81 +1,105 @@
-# Arbejde
+# Arbejde · Tid & Løn — v2.0.0
 
-En personlig, dansk app til registrering af arbejdstid, renovationsture, ekstra tømninger, andet arbejde og fravær. Appen har et mørkt design og tilpasser sig Windows-computer og Samsung-tablet.
+En personlig, dansk app til arbejdstid, renovationsture, akkord, løn og fravær. Version 2 samler arbejdsdagen i et nyt orange/grafit-design med de leverede logoer, 3D-ikoner og et lokalt register over vogne og kollegaer.
+
+Appen er en statisk webapp uden eksterne JavaScript-pakker, cloudkonto eller serverdatabase. Alle skrifttyper og grafiske appfiler leveres sammen med koden. Dine registreringer og importerede registeroplysninger gemmes lokalt i din browserprofil.
+
+## Appens 12 sider
+
+| Side | Indhold |
+| --- | --- |
+| Overblik | Periodens nøgletal, arbejdsuge og genveje |
+| Arbejdstid | Daglig registrering af start/slut, pauser, tur, bemanding og opgaver |
+| Løn | Normaltid, overarbejde og estimeret bruttoløn |
+| Kalender | Registreringer, arbejdsplaner, fravær og vejledende løndage |
+| Registreringer | Søg, ret, slet og eksportér registreringer |
+| Opret | Samlede genveje til nye tilføjelser |
+| Job & kontrakt | Arbejdsordning, satser, lønperiode og kontraktoplysninger |
+| Fravær | Sygdom, fridage, ferie og feriefridage |
+| Vogn & kollegaer | Privat, lokalt register med søgning og kildekontrol |
+| Statistik | Sammenlign arbejdstid og aktivitet |
+| Eksport | Eksportmuligheder og hjælp til at tage oplysninger med videre |
+| Indstillinger | Personlige indstillinger, vogn-/turlister og fuld sikkerhedskopi |
+
+## Kom godt i gang
+
+1. Opret eller ret dit job under **Job & kontrakt**. Vælg arbejdsuge, og udfyld satserne fra din kontrakt.
+2. Tilføj vogne og ture, eller importér dit eget register under **Vogn & kollegaer**.
+3. Registrér hele arbejdsdagen under **Arbejdstid**. Ekstra tømninger og andet arbejde knyttes til den samme vagt.
+4. Tilføj planer og fravær. Åbn eksisterende registreringer for at rette dato, timer eller øvrige oplysninger.
+5. Brug periodens eller månedens tal i **Overblik** og **Løn**, og tag jævnligt en JSON-sikkerhedskopi.
+
+Chauffør og kollega/medhjælper er valgfrie felter i den daglige registrering. De kan vælges fra dit lokale register eller udfyldes manuelt. Navnene følger registreringen, kan findes med søgning og indgår i CSV-eksporten sammen med vogn, tur og timer.
+
+## Privat register og sikkerhedskopier
+
+Den offentlige projektkode indeholder ikke et udfyldt firma- eller personaleregister. Du kan oprette vogne og kollegaer manuelt eller importere din egen JSON-fil via **Vogn & kollegaer → Importér register**. Registeret understøtter tilknyttede chauffører, kontaktoplysninger, kildereferencer og punkter, der kræver kontrol.
+
+Registerimport bruger filtypen `arbejde-directory`, version 1. Den erstatter det aktuelle register og føjer de importerede vognnumre til dine valgmuligheder. **Dine jobs, lønsatser, arbejdsregistreringer, ture, planer og øvrige indstillinger bevares.** Gem eventuelt det eksisterende register med **Download register**, inden det erstattes.
+
+En fuld JSON-sikkerhedskopi fra **Indstillinger** indeholder hele appens datasæt, inklusive registeret. Fuld import er en gendannelse af datasættet og skal behandles anderledes end registerimport. Læs dialogen, og gem en backup inden gendannelse. CSV er til tabeller og videre bearbejdning; brug JSON, når data skal gendannes i appen.
+
+Version 2 genbruger den eksisterende lagernøgle og understøtter det tidligere dataformat. På samme webadresse og i samme browserprofil indlæses gyldige eksisterende data automatisk. Ældre sikkerhedskopier uden registerfelt åbnes med et tomt register. Flytning mellem lokal HTML, en udgivet webadresse eller en anden browser kræver eksport/import.
+
+Der er ingen automatisk synkronisering mellem Windows og tablet. Sletning af browserdata eller privat browsing kan fjerne lokale oplysninger. Opbevar JSON- og CSV-filer privat; de kan indeholde personoplysninger og løndata. Upload dem ikke til et offentligt repository eller en offentlig udgivelse.
 
 ## Start lokalt
 
-Installer Node.js 20 eller nyere. Åbn en terminal i projektmappen og kør:
+Installer Node.js 20 eller nyere. Åbn en terminal i projektmappen:
 
 ```sh
 npm start
 ```
 
-Åbn derefter [http://127.0.0.1:4173](http://127.0.0.1:4173). Projektet har ingen eksterne pakker, så `npm install` er ikke nødvendigt. Kildekoden består af HTML, CSS og JavaScript-moduler.
-
-Kontroller beregninger og syntaks med:
+Åbn [http://127.0.0.1:4173](http://127.0.0.1:4173). `npm install` er ikke nødvendigt. Kør beregnings-/datatests og syntakskontrol med:
 
 ```sh
 npm test
 npm run check
 ```
 
-Hvis tabletten skal åbne den lokale server på samme netværk, kan serveren bindes til netværket. I PowerShell:
+For at åbne den lokale server fra tabletten på samme netværk kan serveren bindes til netværket. I PowerShell:
 
 ```powershell
 $env:HOST = '0.0.0.0'
 npm start
 ```
 
-Åbn computerens lokale IP-adresse med port 4173 på tabletten. Det kræver, at computerens firewall tillader forbindelsen. Installation og offlinefunktion kræver en sikker adresse: HTTPS eller localhost. Brug GitHub Pages til almindelig brug på begge enheder.
+Åbn computerens lokale IP-adresse med port 4173 på tabletten. Det kræver, at firewallen tillader forbindelsen. Installation og service worker kræver HTTPS eller localhost; brug en HTTPS-udgivelse til almindelig brug på begge enheder.
 
-## Udgiv på GitHub Pages
+## Udgiv og installer
 
-1. Læg projektfilerne i roden af `tobiasmejlvang-afk/Arbejde` og commit til `main`.
-2. Åbn repositoryets **Settings → Pages**.
-3. Vælg **Deploy from a branch**, derefter **main** og **/ (root)**, og gem.
-4. Når GitHub har udgivet siden, åbnes den på [tobiasmejlvang-afk.github.io/Arbejde/](https://tobiasmejlvang-afk.github.io/Arbejde/).
+Læg projektfilerne i roden af repositoryet. I **Settings → Pages** vælges **Deploy from a branch → main → / (root)**. De relative appstier fungerer under `/Arbejde/`; der kræves ingen byggeproces eller API-nøgler.
 
-Alle appfiler bruger relative stier og fungerer under `/Arbejde/`. Der kræves ingen bygning, API-nøgler eller serverdatabase. Tilgængeligheden af GitHub Pages afhænger af repositoryets synlighed og kontoens plan.
+Når udgivelsen er klar, bruges [appens HTTPS-adresse](https://tobiasmejlvang-afk.github.io/Arbejde/) på begge enheder. På Windows åbnes den i Edge eller Chrome og installeres via browserens installationsikon eller menu. På Samsung-tablet åbnes den i Chrome; vælg **Installer app** eller **Føj til startskærm**. Menutekster afhænger af browseren. Et ZIP-download er projektets kildekode; den installerede app tilføjes fra HTTPS-adressen.
 
-## Installer på dine enheder
+Service workeren gemmer appfiler til offlinebrug efter en vellykket installation. Ved udgivelser hentes onlinefiler på ny. Opdatér cacheversionen og assetlisten i `sw.js`, når filer ændres. En allerede åbnet app kan kræve genindlæsning.
 
-På Windows: Åbn den udgivne HTTPS-adresse i Edge eller Chrome. Brug browserens installationsikon i adresselinjen eller menuen til at installere siden som app.
+Responsivt design og PWA-understøttelse er implementeret. Visuel browserkontrol og test på fysiske Windows-/Samsung-enheder af version 2 er endnu ikke gennemført.
 
-På Samsung-tablet: Åbn samme HTTPS-adresse i Chrome, og vælg **Installer app** eller **Føj til startskærm** i menuen. Den præcise menutekst afhænger af browserens version.
+## Beregninger
 
-Appen gemmer de nødvendige filer til offlinebrug efter første vellykkede åbning. Ved udgivelser kontrollerer den for opdateringer; online hentes appfiler på ny. Ændr cacheversionen i `sw.js`, når du udgiver ændrede appfiler. En åbnet app kan kræve genindlæsning for at tage en ny version i brug.
+Løn er et estimat af brutto før skat og øvrige fradrag. Ukendte satser starter på 0 og skal udfyldes fra kontrakten. Appen antager ingen lovbestemte satser, ferierettigheder eller automatisk sygeløn. Pension, frivalg og fravær følger de gemte indstillinger.
 
-## Dine oplysninger og sikkerhedskopier
+De angivne ordninger giver 3 × 12,33 = **36,99 timer**, 4 × 9,25 = **37 timer** og 4 × 7,4 + 7,0 = **36,6 timer**. Appen ændrer ikke dagstallene til præcist 37 timer. Du vælger ordning på job og registrering; de præcise grænser er defineret i `domain.js`. 12,33 er decimaltimer.
 
-Registreringer gemmes lokalt i den browserprofil, hvor du bruger appen. Der er ingen cloudkonto, backend eller automatisk synkronisering mellem computer og tablet. Brug JSON-eksport i **Indstillinger** til sikkerhedskopi og JSON-import på den anden enhed til at flytte oplysningerne. Behandl en import som en gendannelse af data, og læs importdialogen, før du bekræfter.
+Ekstra tømninger og andre opgaver ligger inden for vagtens start/slut og lægges ikke til arbejdstiden igen. Læs [beregningsprincipperne](RULES.md), før du sammenholder estimaterne med lønsedler.
 
-Tag jævnligt en sikkerhedskopi. Sletning af browserdata, privat browsing eller skift til en anden browserprofil kan fjerne eller skjule lokale registreringer. Undlad at committe eksporter med personlige oplysninger til GitHub. Appens projektfiler indeholder ingen virkelige persondata.
+## Design og kildefiler
 
-## Kom godt i gang
+Den orange/grafit-identitet bygger på brugerens leverede grafik, beskåret og skaleret til appbrug. Paletten bruger orange `#FF8A00`/`#FF6600`, grafit `#3E4045`, kulgrå `#25272B`, baggrund `#121315` og varm neutral `#D9D1C7`.
 
-1. Opret et **Job**, vælg din arbejdsuge, og udfyld kontraktens satser og lønperiode.
-2. Opret de vogne, ture og opgaver, som du bruger i hverdagen.
-3. Brug **Daglig registrering** til start/slut, tur, bemanding, tømninger og affaldstyper. Ekstra tømninger og andet arbejde knyttes til registreringen.
-4. Tilføj arbejdsplaner og fravær, og se registreringer og løndage i **Kalender**.
-5. Se periodens eller månedens tal i **Overblik**. Eksisterende registreringer kan åbnes og rettes.
+Den faktiske Inter Variable-skrifttype leveres lokalt i `assets/fonts/InterVariable.woff2`, vægte 100–900. Den er hentet uændret fra [det officielle Inter-projekt, version 4.1](https://github.com/rsms/inter/tree/v4.1) og distribueres med [SIL Open Font License 1.1](assets/fonts/Inter-OFL.txt). Appen henter ikke skrifttypen fra en ekstern fonttjeneste.
 
-## Beregninger og afgrænsning
-
-Løn er et estimat af bruttobeløb før skat og øvrige fradrag. Ukendte lønsatser starter på 0 og skal udfyldes fra din kontrakt. Appen erstatter ikke en lønseddel. Pension, frivalg og fravær anvender dine indstillinger; appen antager ingen lovbestemte satser, rettigheder eller feriesaldi.
-
-De forudindstillede uger følger de angivne dagstal: 3 × 12,33 = 36,99 timer, 4 × 9,25 = 37 timer og 4 × 7,4 + 7,0 = 36,6 timer. Derfor svarer 3- og 5-dagesordningerne ikke præcist til 37 timer. Du kan vælge ordning på job og registrering; de præcise dagsgrænser er defineret i `domain.js` og skal ændres dér, hvis kontrakten bruger andre tal. 12,33 er decimaltimer, ikke 12 timer og 33 minutter.
-
-Læs de fulde beregningsprincipper og afgrænsninger i [RULES.md](RULES.md), inden du sammenholder estimater med lønsedler.
-
-## Projektstruktur
-
-| Fil | Formål |
+| Fil eller mappe | Formål |
 | --- | --- |
-| `index.html`, `styles.css` | Appens ramme og responsive design |
-| `app.js`, `panels.js` | Navigation, formularer, lokal lagring og visninger |
-| `domain.js` | Rene beregninger og datavalidering |
-| `domain.test.js` | Test af arbejdstid, uger og lønberegning |
-| `manifest.webmanifest`, `icon.svg`, `sw.js` | Installation og offlinefiler |
-| `serve.mjs` | Lokal webserver med sikkerhedsoverskrifter |
+| `index.html`, `styles.css`, `brand.css` | Ramme, responsivt layout og det nye designsystem |
+| `app.js`, `panels.js`, `experience.js` | Navigation, formularer og sammenhængende visninger |
+| `domain.js`, `directory-domain.js` | Beregninger, validering og registerimport |
+| `directory-ui.js` | Vogn-/kollegaregister og dets dialoger |
+| `domain.test.js`, `directory-domain.test.js` | Beregnings- og datatests |
+| `assets/brand/`, `assets/fonts/` | Leveret grafik og lokal Inter med licens |
+| `manifest.webmanifest`, `icon-192.png`, `icon-512.png`, `sw.js` | Installation og offlinefiler |
+| `serve.mjs`, `check.mjs` | Lokal server og syntakskontrol |
 
-Lokalserveren tilføjer en Content Security Policy uden inline scripts eller `eval`. GitHub Pages understøtter ikke projektets egne HTTP-overskrifter; undgå derfor at tilføje tredjepartsscripts eller hemmeligheder til klientkoden. Alle data i en browserapp kan læses af brugeren af den pågældende browserprofil.
+Lokalserveren tilføjer en Content Security Policy uden inline scripts eller `eval`. GitHub Pages understøtter ikke projektets egne HTTP-overskrifter. Hemmeligheder og private registre skal ikke ligge i klientkoden. Lokale browserdata kan læses af brugeren af den pågældende browserprofil.

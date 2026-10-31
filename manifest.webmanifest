@@ -1,31 +1,25 @@
 {
-  "name": "Arbejde – tid og løn",
+  "name": "Arbejde – Tid & Løn",
   "short_name": "Arbejde",
-  "description": "Dit personlige overblik over arbejdstid, ture og løn.",
+  "description": "Dit personlige arbejdsrum til timer, løn, arbejdsplaner og dit private vogn- og kollegaregister.",
   "lang": "da",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#0d1017",
-  "theme_color": "#0d1017",
+  "background_color": "#121315",
+  "theme_color": "#121315",
   "icons": [
     {
-      "src": "./icon-192.png",
+      "src": "./icon-192.png?v=2.0.0",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "./icon-512.png",
+      "src": "./icon-512.png?v=2.0.0",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
-    },
-    {
-      "src": "./icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any"
     }
   ]
 }

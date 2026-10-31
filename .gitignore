@@ -9,3 +9,10 @@ coverage/
 playwright-report/
 test-results/
 arbejde-backup*.json
+
+# Private company registers and local data stay outside public source
+*privat*.json
+*private*.json
+*privat*.html
+nvf-extraction.*
+private/

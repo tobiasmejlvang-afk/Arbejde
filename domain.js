@@ -1,3 +1,5 @@
+import {validateDirectory} from './directory-domain.js';
+
 // All dates are date-only ISO values and all arithmetic uses UTC to avoid DST drift.
 // Contract assumptions are explicit: 12.33 × 3 = 36.99 h and 4 × 7.4 + 7 = 36.6 h,
 // although the supplied contract says 37 h/week. We preserve the supplied daily norms.
@@ -36,7 +38,7 @@ export function defaultJob(overrides = {}) {
 }
 export function emptyState() {
   const job = defaultJob();
-  return {version: 1, jobs: [job], entries: [], plans: [], vehicles: [], routes: [], settings: {name: '', defaultJobId: job.id}};
+  return {version: 1, jobs: [job], entries: [], plans: [], vehicles: [], routes: [], directory: null, settings: {name: '', defaultJobId: job.id}};
 }
 export function demoState() {
   const state = emptyState();
@@ -157,6 +159,7 @@ export function validateEntry(entry, state, skipConflicts = false) {
   const job = state.jobs.find(item => item.id === entry.jobId);
   if (!job) errors.push('Vælg et eksisterende job.');
   if (!ENTRY_TYPES.includes(entry.type)) errors.push('Vælg en gyldig registreringstype.');
+  for (const key of ['driver', 'colleague']) if (own(entry, key) && (typeof entry[key] !== 'string' || entry[key].length > 200)) errors.push('Chauffør og kollega skal være tekst på højst 200 tegn.');
   if (!['3', '4', '5'].includes(entry.scheme || job?.scheme)) errors.push('Vælg en gyldig arbejdsuge.');
   if (own(entry, 'extras') && !Array.isArray(entry.extras)) errors.push('Ekstraarbejde skal være en liste.');
   if (own(entry, 'waste') && (!Array.isArray(entry.waste) || entry.waste.some(waste => !WASTE_TYPES.includes(waste)))) errors.push('Vælg gyldige affaldstyper.');
@@ -191,10 +194,10 @@ export function validateEntry(entry, state, skipConflicts = false) {
 // Import only recognized keys and primitives. Unknown keys are rejected, including
 // prototype-like names, so backups cannot smuggle unrelated application state.
 const JOB_KEYS = ['id', 'name', 'employer', 'role', 'employment', 'startDate', 'scheme', 'hourlyRate', 'overtimeRate', 'periodType', 'periodAnchor', 'payday', 'paydayOffset', 'pensionEmployee', 'pensionEmployer', 'holidayPercent', 'choicePercent', 'holidayDays', 'freeHolidayDays', 'sickPayPercent', 'notes'];
-const ENTRY_KEYS = ['id', 'date', 'jobId', 'type', 'scheme', 'start', 'end', 'breakMinutes', 'vehicle', 'route', 'crew', 'empties', 'waste', 'extras', 'notes'];
+const ENTRY_KEYS = ['id', 'date', 'jobId', 'type', 'scheme', 'start', 'end', 'breakMinutes', 'vehicle', 'route', 'crew', 'driver', 'colleague', 'empties', 'waste', 'extras', 'notes'];
 const EXTRA_KEYS = ['id', 'kind', 'task', 'minutes', 'vehicle', 'forVehicle', 'from', 'to', 'address', 'waste', 'container', 'paidOvertime'];
 const PLAN_KEYS = ['id', 'date', 'from', 'to', 'weekdays', 'jobId', 'scheme', 'title', 'start', 'end', 'vehicle', 'route', 'notes'];
-const TEXT_KEYS = ['id', 'name', 'employer', 'role', 'employment', 'startDate', 'scheme', 'periodType', 'periodAnchor', 'notes', 'date', 'jobId', 'type', 'start', 'end', 'vehicle', 'route', 'crew', 'kind', 'task', 'forVehicle', 'from', 'to', 'address', 'container', 'title'];
+const TEXT_KEYS = ['id', 'name', 'employer', 'role', 'employment', 'startDate', 'scheme', 'periodType', 'periodAnchor', 'notes', 'date', 'jobId', 'type', 'start', 'end', 'vehicle', 'route', 'crew', 'driver', 'colleague', 'kind', 'task', 'forVehicle', 'from', 'to', 'address', 'container', 'title'];
 function schema(object, allowed, label, errors) {
   if (!record(object)) { errors.push(`${label}: ugyldigt objekt.`); return false; }
   if (Object.keys(object).some(key => !allowed.includes(key))) errors.push(`${label}: indeholder ukendte felter.`);
@@ -203,7 +206,7 @@ function schema(object, allowed, label, errors) {
 }
 export function validateState(data) {
   const errors = [];
-  if (!schema(data, ['version', 'jobs', 'entries', 'plans', 'vehicles', 'routes', 'settings'], 'Backup', errors)) return {ok: false, errors, state: null};
+  if (!schema(data, ['version', 'jobs', 'entries', 'plans', 'vehicles', 'routes', 'settings', 'directory'], 'Backup', errors)) return {ok: false, errors, state: null};
   if (data.version !== 1) errors.push('Backupversionen understøttes ikke.');
   for (const key of ['jobs', 'entries', 'plans', 'vehicles', 'routes']) if (!Array.isArray(data[key])) errors.push(`${key} skal være en liste.`);
   if (errors.length) return {ok: false, errors, state: null};
@@ -268,5 +271,11 @@ export function validateState(data) {
     if (typeof data.settings.name !== 'string' || data.settings.name.length > 200) errors.push('Navnet i indstillingerne er ugyldigt.');
     if (typeof data.settings.defaultJobId !== 'string' || (data.settings.defaultJobId && !data.jobs.some(job => job.id === data.settings.defaultJobId))) errors.push('Standardjobbet findes ikke.');
   }
-  return {ok: errors.length === 0, errors: [...new Set(errors)], state: errors.length ? null : JSON.parse(JSON.stringify(data))};
+  let directory = null;
+  if (own(data, 'directory') && data.directory !== null) {
+    const result = validateDirectory(data.directory);
+    if (!result.ok) errors.push(...result.errors.map(error => `NVF-register: ${error}`));
+    else directory = result.directory;
+  }
+  return {ok: errors.length === 0, errors: [...new Set(errors)], state: errors.length ? null : {...JSON.parse(JSON.stringify(data)), directory}};
 }
