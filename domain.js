@@ -159,7 +159,7 @@ export function validateEntry(entry, state, skipConflicts = false) {
   const job = state.jobs.find(item => item.id === entry.jobId);
   if (!job) errors.push('Vælg et eksisterende job.');
   if (!ENTRY_TYPES.includes(entry.type)) errors.push('Vælg en gyldig registreringstype.');
-  for (const key of ['driver', 'colleague']) if (own(entry, key) && (typeof entry[key] !== 'string' || entry[key].length > 200)) errors.push('Chauffør og kollega skal være tekst på højst 200 tegn.');
+  for (const key of ['driver', 'colleague', 'planId', 'timerId']) if (own(entry, key) && (typeof entry[key] !== 'string' || entry[key].length > 200)) errors.push('Chauffør, kollega og referencer skal være tekst på højst 200 tegn.');
   if (!['3', '4', '5'].includes(entry.scheme || job?.scheme)) errors.push('Vælg en gyldig arbejdsuge.');
   if (own(entry, 'extras') && !Array.isArray(entry.extras)) errors.push('Ekstraarbejde skal være en liste.');
   if (own(entry, 'waste') && (!Array.isArray(entry.waste) || entry.waste.some(waste => !WASTE_TYPES.includes(waste)))) errors.push('Vælg gyldige affaldstyper.');
@@ -180,6 +180,7 @@ export function validateEntry(entry, state, skipConflicts = false) {
     }
   } else if (Array.isArray(entry.extras) && entry.extras.length) errors.push('Ekstraarbejde kan kun tilføjes en arbejdsdag.');
   for (const other of skipConflicts ? [] : state.entries) {
+    if (other.id !== entry.id && typeof entry.timerId === 'string' && entry.timerId && other.timerId === entry.timerId) errors.push('Denne tidsmåling er allerede gemt som en registrering.');
     if (other.id === entry.id || other.jobId !== entry.jobId) continue;
     if (other.date === entry.date) {
       if (entry.type !== 'work' || other.type !== 'work') errors.push('Der findes allerede en registrering på denne dato for jobbet.');
@@ -194,9 +195,10 @@ export function validateEntry(entry, state, skipConflicts = false) {
 // Import only recognized keys and primitives. Unknown keys are rejected, including
 // prototype-like names, so backups cannot smuggle unrelated application state.
 const JOB_KEYS = ['id', 'name', 'employer', 'role', 'employment', 'startDate', 'scheme', 'hourlyRate', 'overtimeRate', 'periodType', 'periodAnchor', 'payday', 'paydayOffset', 'pensionEmployee', 'pensionEmployer', 'holidayPercent', 'choicePercent', 'holidayDays', 'freeHolidayDays', 'sickPayPercent', 'notes'];
-const ENTRY_KEYS = ['id', 'date', 'jobId', 'type', 'scheme', 'start', 'end', 'breakMinutes', 'vehicle', 'route', 'crew', 'driver', 'colleague', 'empties', 'waste', 'extras', 'notes'];
+const ENTRY_KEYS = ['id', 'date', 'jobId', 'type', 'scheme', 'start', 'end', 'breakMinutes', 'vehicle', 'route', 'crew', 'driver', 'colleague', 'planId', 'timerId', 'empties', 'waste', 'extras', 'notes'];
 const EXTRA_KEYS = ['id', 'kind', 'task', 'minutes', 'vehicle', 'forVehicle', 'from', 'to', 'address', 'waste', 'container', 'paidOvertime'];
-const PLAN_KEYS = ['id', 'date', 'from', 'to', 'weekdays', 'jobId', 'scheme', 'title', 'start', 'end', 'vehicle', 'route', 'notes'];
+const PLAN_KEYS = ['id', 'date', 'from', 'to', 'weekdays', 'jobId', 'scheme', 'title', 'start', 'end', 'vehicle', 'route', 'notes', 'driver', 'colleague', 'crew', 'people', 'kind', 'source'];
+const PLAN_SOURCE_KEYS = ['type', 'fileName', 'fileHash', 'page', 'row', 'importedAt', 'week', 'year'];
 const TEXT_KEYS = ['id', 'name', 'employer', 'role', 'employment', 'startDate', 'scheme', 'periodType', 'periodAnchor', 'notes', 'date', 'jobId', 'type', 'start', 'end', 'vehicle', 'route', 'crew', 'driver', 'colleague', 'kind', 'task', 'forVehicle', 'from', 'to', 'address', 'container', 'title'];
 function schema(object, allowed, label, errors) {
   if (!record(object)) { errors.push(`${label}: ugyldigt objekt.`); return false; }
@@ -233,6 +235,8 @@ export function validateState(data) {
     if (Array.isArray(entry.extras)) entry.extras.forEach((extra, i) => schema(extra, EXTRA_KEYS, `${label}, ekstraarbejde ${i + 1}`, errors));
     errors.push(...validateEntry(entry, data, true).map(error => `${label}: ${error}`));
   }
+  const timerIds = data.entries.map(entry => entry.timerId).filter(value => typeof value === 'string' && value);
+  if (new Set(timerIds).size !== timerIds.length) errors.push('Den samme tidsmåling må kun gemmes én gang.');
   // Batch imports use indexed conflict checks, not a quadratic scan of all entries.
   const dateGroups = new Map(), jobIntervals = new Map();
   for (const entry of data.entries) {
@@ -265,11 +269,24 @@ export function validateState(data) {
     if (!datesValid || !data.jobs.some(job => job.id === plan.jobId) || typeof plan.title !== 'string' || !plan.title.trim()) errors.push(`${label}: dato, ugedage, job og titel skal være udfyldt.`);
     if (own(plan, 'scheme') && !['3', '4', '5'].includes(plan.scheme)) errors.push(`${label}: ugyldig arbejdsuge.`);
     if ((plan.start || plan.end) && (timeValue(plan.start) === null || timeValue(plan.end) === null || plan.start === plan.end)) errors.push(`${label}: ugyldig start- eller sluttid.`);
+    for (const key of ['driver', 'colleague', 'crew']) if (own(plan, key) && (typeof plan[key] !== 'string' || plan[key].length > 200)) errors.push(`${label}: ugyldig bemanding.`);
+    if (own(plan, 'people') && (!Array.isArray(plan.people) || plan.people.length > 20 || plan.people.some(person => typeof person !== 'string' || !person.trim() || person.length > 200) || new Set(plan.people).size !== plan.people.length)) errors.push(`${label}: ugyldig personliste.`);
+    if (own(plan, 'kind') && ![...ENTRY_TYPES, 'unknown', 'unassigned'].includes(plan.kind)) errors.push(`${label}: ugyldig plantype.`);
+    if (own(plan, 'source') && schema(plan.source, PLAN_SOURCE_KEYS, `${label}, kilde`, errors)) {
+      const source = plan.source;
+      if (source.type !== 'pdf' || typeof source.fileName !== 'string' || !source.fileName.trim() || source.fileName.length > 255 || /[<>:"/\\|?*]/.test(source.fileName)) errors.push(`${label}: ugyldigt kildefilnavn.`);
+      if (typeof source.fileHash !== 'string' || (source.fileHash !== '' && !/^(?:pdfjs:)?[a-f0-9]{16,128}$/i.test(source.fileHash))) errors.push(`${label}: ugyldig kildefingeraftryk.`);
+      if (!Number.isInteger(source.page) || source.page < 1 || source.page > 10000 || !((Number.isInteger(source.row) && source.row >= 0) || (typeof source.row === 'string' && source.row.length > 0 && source.row.length <= 200))) errors.push(`${label}: ugyldig kildeplacering.`);
+      if (typeof source.importedAt !== 'string' || !/^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,3})?Z$/.test(source.importedAt) || Number.isNaN(Date.parse(source.importedAt)) || !validDate(source.importedAt.slice(0, 10))) errors.push(`${label}: ugyldigt importtidspunkt.`);
+      if (own(source, 'week') && source.week !== null && (!Number.isInteger(source.week) || source.week < 1 || source.week > 53)) errors.push(`${label}: ugyldig kildeuge.`);
+      if (own(source, 'year') && source.year !== null && (!Number.isInteger(source.year) || source.year < 1900 || source.year > 2199)) errors.push(`${label}: ugyldigt kildeår.`);
+    }
   }
   for (const key of ['vehicles', 'routes']) if (data[key].length > 1000 || data[key].some(value => typeof value !== 'string' || !value.trim() || value.length > 100) || new Set(data[key]).size !== data[key].length) errors.push(`${key} skal indeholde unikke, korte tekstværdier.`);
-  if (schema(data.settings, ['name', 'defaultJobId'], 'Indstillinger', errors)) {
+  if (schema(data.settings, ['name', 'defaultJobId', 'defaultDriver', 'defaultVehicle'], 'Indstillinger', errors)) {
     if (typeof data.settings.name !== 'string' || data.settings.name.length > 200) errors.push('Navnet i indstillingerne er ugyldigt.');
     if (typeof data.settings.defaultJobId !== 'string' || (data.settings.defaultJobId && !data.jobs.some(job => job.id === data.settings.defaultJobId))) errors.push('Standardjobbet findes ikke.');
+    for (const key of ['defaultDriver', 'defaultVehicle']) if (own(data.settings, key) && (typeof data.settings[key] !== 'string' || data.settings[key].length > 200)) errors.push('Standardchauffør og -vogn skal være tekst på højst 200 tegn.');
   }
   let directory = null;
   if (own(data, 'directory') && data.directory !== null) {

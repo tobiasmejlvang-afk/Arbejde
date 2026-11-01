@@ -1,8 +1,8 @@
 // Increment this version whenever app files change before publishing a release.
 const SCOPE = new URL(self.registration.scope);
 const PREFIX = 'arbejde-' + SCOPE.pathname + '-';
-const CACHE = PREFIX + 'v3-20261031';
-const ASSETS = ["index.html","app.js","styles.css","brand.css","experience.js","domain.js","directory-domain.js","directory-ui.js","panels.js","manifest.webmanifest","icon-192.png","icon-512.png","assets/brand/absence.png","assets/brand/app-icon.png","assets/brand/calendar.png","assets/brand/export.png","assets/brand/job.png","assets/brand/logo-horizontal.png","assets/brand/monogram.png","assets/brand/overview.png","assets/brand/pay.png","assets/brand/settings.png","assets/brand/statistics.png","assets/brand/symbol.png","assets/brand/time.png","assets/brand/vehicle.png","assets/fonts/InterVariable.woff2"];
+const CACHE = PREFIX + 'v4-20261101';
+const ASSETS = ["index.html","app.js","styles.css","brand.css","experience.js","domain.js","directory-domain.js","directory-ui.js","panels.js","manifest.webmanifest","icon-192.png","icon-512.png","assets/brand/absence.png","assets/brand/app-icon.png","assets/brand/calendar.png","assets/brand/export.png","assets/brand/job.png","assets/brand/logo-horizontal.png","assets/brand/monogram.png","assets/brand/overview.png","assets/brand/pay.png","assets/brand/settings.png","assets/brand/statistics.png","assets/brand/symbol.png","assets/brand/time.png","assets/brand/vehicle.png","assets/fonts/InterVariable.woff2","pdf-reader.js","schedule-parser.js","schedule-domain.js","schedule-import-ui.js","schedule-import.css","daily-tools.js","daily-tools.css","timer-domain.js","timer-controller.js","assets/pdfjs/pdf.min.mjs","assets/pdfjs/pdf.worker.min.mjs","assets/pdfjs/standard_fonts/FoxitDingbats.pfb","assets/pdfjs/standard_fonts/FoxitFixed.pfb","assets/pdfjs/standard_fonts/FoxitFixedBold.pfb","assets/pdfjs/standard_fonts/FoxitFixedBoldItalic.pfb","assets/pdfjs/standard_fonts/FoxitFixedItalic.pfb","assets/pdfjs/standard_fonts/FoxitSerif.pfb","assets/pdfjs/standard_fonts/FoxitSerifBold.pfb","assets/pdfjs/standard_fonts/FoxitSerifBoldItalic.pfb","assets/pdfjs/standard_fonts/FoxitSerifItalic.pfb","assets/pdfjs/standard_fonts/FoxitSymbol.pfb","assets/pdfjs/standard_fonts/LiberationSans-Bold.ttf","assets/pdfjs/standard_fonts/LiberationSans-BoldItalic.ttf","assets/pdfjs/standard_fonts/LiberationSans-Italic.ttf","assets/pdfjs/standard_fonts/LiberationSans-Regular.ttf"];
 const scope = SCOPE;
 const indexURL = new URL('index.html', scope).href;
 const assetURLs = new Set(ASSETS.map(path => new URL(path, scope).href));
@@ -29,7 +29,8 @@ self.addEventListener('fetch', event => {
   if (request.method !== 'GET' || url.origin !== scope.origin || !url.pathname.startsWith(scope.pathname) || request.headers.has('range')) return;
   const canonical = new URL(url.pathname, scope.origin).href;
   const isNavigation = request.mode === 'navigate' && (url.pathname === scope.pathname || canonical === indexURL);
-  if (!isNavigation && !assetURLs.has(canonical)) return;
+  const isCMap = url.pathname.startsWith(new URL('assets/pdfjs/cmaps/', scope).pathname) && url.pathname.endsWith('.bcmap');
+  if (!isNavigation && !assetURLs.has(canonical) && !isCMap) return;
   // Network first gives online sessions the latest files; offline sessions use the last successful version.
   event.respondWith((async () => {
     const cache = await caches.open(CACHE);

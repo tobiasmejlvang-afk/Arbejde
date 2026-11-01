@@ -1,105 +1,107 @@
-# Arbejde · Tid & Løn — v2.0.0
+# Arbejde · Tid & Løn — v3.0.0
 
-En personlig, dansk app til arbejdstid, renovationsture, akkord, løn og fravær. Version 2 samler arbejdsdagen i et nyt orange/grafit-design med de leverede logoer, 3D-ikoner og et lokalt register over vogne og kollegaer.
+Personlig dansk app til arbejdstid, renovationsture, akkord, løn og fravær. Version 3 tilføjer lokal PDF-import af arbejdsplaner og en daglig timer. Det orange/grafit-design bruger de leverede logoer og 3D-ikoner samt en lokalt leveret Inter-skrifttype.
 
-Appen er en statisk webapp uden eksterne JavaScript-pakker, cloudkonto eller serverdatabase. Alle skrifttyper og grafiske appfiler leveres sammen med koden. Dine registreringer og importerede registeroplysninger gemmes lokalt i din browserprofil.
+Appen gemmer data i din browserprofil. Der er ingen cloudkonto eller automatisk synkronisering. Kom hurtigt i gang med [START-HER.md](START-HER.md).
 
-## Appens 12 sider
+## Fra arbejdsplan til arbejdsdag
+
+1. Opret eller ret **Job & kontrakt** med arbejdsuge, lønperiode og dine kontraktsatser.
+2. Åbn **Importér arbejdsplan**, og vælg PDF-filer fra din enhed.
+3. Vælg job og derefter **én person eller én vogn**. Gennemse datoer, navnematch, opgaver og eventuelle tider. Ret usikre rækker, vælg de ønskede vagter, og bekræft importen.
+4. Se vagterne i **Kalender**. Brug **Arbejdstid** til at måle eller indtaste den faktisk udførte arbejdsdag.
+5. Se periodens tal i **Overblik** og **Løn**, og tag en JSON-sikkerhedskopi.
+
+### PDF-import
+
+Læseren understøtter NVF-ugeplanernes tabel med vognrækker, ugens dage og personnavne. Tekst og udfyldte formularfelter læses med deres placering på siden. Andre PDF-layouts kan kræve manuel gennemgang og er ikke garanteret genkendt. Grænsen er 20 MiB og 30 sider pr. fil. Scannede PDFer uden tekstlag understøttes ikke; der er ingen OCR i appen.
+
+Importen viser dit valgte udsnit før lagring. Usikre eller delvise navnematch kræver dit aktive valg og bekræftelse. Personnoter og navnestumper bliver ikke automatisk til fravær. Kontrollér altid type og kilde for rækker til gennemgang. Dubletter springes over; konflikter vises. Manuelle planer og gemte arbejdsregistreringer bliver ikke automatisk erstattet.
+
+PDF-vagter er **planer**. Rækker uden start/slut gemmes som heldagsplaner uden opfundne timer. Du kan vælge standardtider, hvis de passer til din plan. Hverken tidsangivne eller tidsløse planer tæller som faktisk arbejdstid, løn eller registreret fravær. Det kræver en særskilt, gemt registrering.
+
+Valget af person eller vogn kan huskes med **Brug dette valg til min daglige visning**. Det hjælper den daglige visning med at finde de relevante planer og udfylde oplysninger. Du kan stadig rette job, vogn, tur og bemanding ved registreringen.
+
+### Daglig timer
+
+Start timeren, når arbejdsdagen faktisk begynder. Brug pause og fortsæt undervejs. Start, pauser og status gemmes separat i samme browser, så timeren kan gendannes efter genindlæsning. Tiden beregnes fra enhedens klokkeslæt.
+
+Stop timeren, når arbejdet slutter. Gennemgå start/slut, ubetalt pause, vogn, tur og øvrige oplysninger i registreringsformularen, og gem arbejdsdagen. Først da indgår dagen i timer og løn. Du kan også indtaste eller rette tider manuelt under **Arbejdstid** og **Registreringer**.
+
+En aktiv eller stoppet timer, som endnu ikke er gemt som arbejdsregistrering, indgår **ikke** i appens JSON-backup. Afslut og gem arbejdsdagen før flytning til en anden enhed eller gendannelse af data.
+
+## Sider og sammenhæng
 
 | Side | Indhold |
 | --- | --- |
-| Overblik | Periodens nøgletal, arbejdsuge og genveje |
-| Arbejdstid | Daglig registrering af start/slut, pauser, tur, bemanding og opgaver |
-| Løn | Normaltid, overarbejde og estimeret bruttoløn |
-| Kalender | Registreringer, arbejdsplaner, fravær og vejledende løndage |
-| Registreringer | Søg, ret, slet og eksportér registreringer |
-| Opret | Samlede genveje til nye tilføjelser |
-| Job & kontrakt | Arbejdsordning, satser, lønperiode og kontraktoplysninger |
+| Overblik | Nøgletal, arbejdsuge og genveje |
+| Arbejdstid | Daglig timer og manuel registrering |
+| Løn | Normaltid, overarbejde og estimeret brutto |
+| Kalender | Planer, registreringer, fravær og vejledende løndage |
+| Importér arbejdsplan | Lokal PDF-læsning, udvælgelse og bekræftelse |
+| Registreringer | Søg, ret, slet og eksportér arbejdsdage |
+| Opret | Genveje til nye tilføjelser |
+| Job & kontrakt | Arbejdsordning, satser og kontraktoplysninger |
 | Fravær | Sygdom, fridage, ferie og feriefridage |
-| Vogn & kollegaer | Privat, lokalt register med søgning og kildekontrol |
-| Statistik | Sammenlign arbejdstid og aktivitet |
-| Eksport | Eksportmuligheder og hjælp til at tage oplysninger med videre |
-| Indstillinger | Personlige indstillinger, vogn-/turlister og fuld sikkerhedskopi |
+| Vogn & kollegaer | Privat register, søgning og kildekontrol |
+| Statistik | Arbejdstid og aktivitet |
+| Eksport | Tag oplysninger med videre |
+| Indstillinger | Personlige valg, lister og fuld backup |
 
-## Kom godt i gang
+Chauffør og kollega/medhjælper er valgfrie registreringsfelter. De kan vælges fra registeret eller skrives manuelt og følger registreringen i søgning og CSV-eksport. Ekstra tømninger og andre opgaver hører til den samme vagt; deres tid lægges ikke oven i start/slut en ekstra gang.
 
-1. Opret eller ret dit job under **Job & kontrakt**. Vælg arbejdsuge, og udfyld satserne fra din kontrakt.
-2. Tilføj vogne og ture, eller importér dit eget register under **Vogn & kollegaer**.
-3. Registrér hele arbejdsdagen under **Arbejdstid**. Ekstra tømninger og andet arbejde knyttes til den samme vagt.
-4. Tilføj planer og fravær. Åbn eksisterende registreringer for at rette dato, timer eller øvrige oplysninger.
-5. Brug periodens eller månedens tal i **Overblik** og **Løn**, og tag jævnligt en JSON-sikkerhedskopi.
+## Privatliv, register og backup
 
-Chauffør og kollega/medhjælper er valgfrie felter i den daglige registrering. De kan vælges fra dit lokale register eller udfyldes manuelt. Navnene følger registreringen, kan findes med søgning og indgår i CSV-eksporten sammen med vogn, tur og timer.
+PDF-filen behandles lokalt med den medfølgende Mozilla PDF.js-runtime. **PDF-bytes uploades ikke.** Den offentlige kode indeholder ingen private arbejdsplaner eller et udfyldt personale-/vognregister. Importerede oplysninger og bekræftede planer gemmes i din browser. Opbevar eksporter privat, da de kan indeholde navne, kontaktoplysninger og løndata.
 
-## Privat register og sikkerhedskopier
+Registerimport under **Vogn & kollegaer → Importér register** bruger JSON-typen `arbejde-directory`, version 1. Den erstatter registeret og føjer vognnumre til dine valgmuligheder. Jobs, lønsatser, arbejdsregistreringer, ture, planer og indstillinger bevares. Gem eventuelt det gamle register med **Download register** først.
 
-Den offentlige projektkode indeholder ikke et udfyldt firma- eller personaleregister. Du kan oprette vogne og kollegaer manuelt eller importere din egen JSON-fil via **Vogn & kollegaer → Importér register**. Registeret understøtter tilknyttede chauffører, kontaktoplysninger, kildereferencer og punkter, der kræver kontrol.
+En fuld JSON-backup under **Indstillinger** indeholder appens gemte datasæt, herunder register, planer og personlige valg. Fuld import gendanner hele datasættet. CSV er til videre bearbejdning; JSON bruges til gendannelse. Den separate, igangværende timer følger ikke med.
 
-Registerimport bruger filtypen `arbejde-directory`, version 1. Den erstatter det aktuelle register og føjer de importerede vognnumre til dine valgmuligheder. **Dine jobs, lønsatser, arbejdsregistreringer, ture, planer og øvrige indstillinger bevares.** Gem eventuelt det eksisterende register med **Download register**, inden det erstattes.
-
-En fuld JSON-sikkerhedskopi fra **Indstillinger** indeholder hele appens datasæt, inklusive registeret. Fuld import er en gendannelse af datasættet og skal behandles anderledes end registerimport. Læs dialogen, og gem en backup inden gendannelse. CSV er til tabeller og videre bearbejdning; brug JSON, når data skal gendannes i appen.
-
-Version 2 genbruger den eksisterende lagernøgle og understøtter det tidligere dataformat. På samme webadresse og i samme browserprofil indlæses gyldige eksisterende data automatisk. Ældre sikkerhedskopier uden registerfelt åbnes med et tomt register. Flytning mellem lokal HTML, en udgivet webadresse eller en anden browser kræver eksport/import.
-
-Der er ingen automatisk synkronisering mellem Windows og tablet. Sletning af browserdata eller privat browsing kan fjerne lokale oplysninger. Opbevar JSON- og CSV-filer privat; de kan indeholde personoplysninger og løndata. Upload dem ikke til et offentligt repository eller en offentlig udgivelse.
+Gyldige ældre data beholdes automatisk på samme webadresse og i samme browserprofil. Lokal HTML, den udgivne app og andre browserprofiler har separat lagring. Brug eksport/import ved flytning mellem dem eller mellem Windows og Samsung-tablet. Browserdata kan forsvinde, når de ryddes; der er ingen automatisk synkronisering eller serverkopi.
 
 ## Start lokalt
 
-Installer Node.js 20 eller nyere. Åbn en terminal i projektmappen:
+Installer **Node.js 22.13 eller nyere**. Åbn en terminal i projektmappen:
 
 ```sh
 npm start
 ```
 
-Åbn [http://127.0.0.1:4173](http://127.0.0.1:4173). `npm install` er ikke nødvendigt. Kør beregnings-/datatests og syntakskontrol med:
+Åbn [http://127.0.0.1:4173](http://127.0.0.1:4173). Runtimefilerne er leveret med projektet, så `npm install` er ikke nødvendigt. Kør tests og syntakskontrol med:
 
 ```sh
 npm test
 npm run check
 ```
 
-For at åbne den lokale server fra tabletten på samme netværk kan serveren bindes til netværket. I PowerShell:
-
-```powershell
-$env:HOST = '0.0.0.0'
-npm start
-```
-
-Åbn computerens lokale IP-adresse med port 4173 på tabletten. Det kræver, at firewallen tillader forbindelsen. Installation og service worker kræver HTTPS eller localhost; brug en HTTPS-udgivelse til almindelig brug på begge enheder.
+For adgang fra tabletten på samme netværk kan PowerShell starte serveren med `$env:HOST = '0.0.0.0'` før `npm start`. Åbn computerens lokale IP-adresse med port 4173, og tillad forbindelsen i firewallen. Installation og service worker kræver HTTPS eller localhost.
 
 ## Udgiv og installer
 
-Læg projektfilerne i roden af repositoryet. I **Settings → Pages** vælges **Deploy from a branch → main → / (root)**. De relative appstier fungerer under `/Arbejde/`; der kræves ingen byggeproces eller API-nøgler.
+Projektet har ingen byggeproces eller API-nøgler. Læg filerne i repositoryets rod, og vælg **Settings → Pages → Deploy from a branch → main → / (root)**. Relative stier understøtter `/Arbejde/`.
 
-Når udgivelsen er klar, bruges [appens HTTPS-adresse](https://tobiasmejlvang-afk.github.io/Arbejde/) på begge enheder. På Windows åbnes den i Edge eller Chrome og installeres via browserens installationsikon eller menu. På Samsung-tablet åbnes den i Chrome; vælg **Installer app** eller **Føj til startskærm**. Menutekster afhænger af browseren. Et ZIP-download er projektets kildekode; den installerede app tilføjes fra HTTPS-adressen.
+Når udgivelsen er klar, bruges [appens HTTPS-adresse](https://tobiasmejlvang-afk.github.io/Arbejde/) på begge enheder. Installer den via Edge-/Chrome-menuen på Windows eller **Installer app / Føj til startskærm** i Chrome på Samsung-tablet. Menutekster varierer. ZIP-filen er projektets kildekode.
 
-Service workeren gemmer appfiler til offlinebrug efter en vellykket installation. Ved udgivelser hentes onlinefiler på ny. Opdatér cacheversionen og assetlisten i `sw.js`, når filer ændres. En allerede åbnet app kan kræve genindlæsning.
+Den installerede webapp cacher app- og PDF-runtimefiler til offlinebrug; tegnkort hentes ved behov og gemmes til senere. Den selvstændige HTML-kopi kan kræve internet for første indlæsning af PDF-læserens statiske filer fra appudgivelsen. PDF-data forbliver lokale. Ved nye udgivelser skal cacheversion og assetliste i `sw.js` opdateres. Genindlæs en allerede åben app efter opdateringen.
 
-Responsivt design og PWA-understøttelse er implementeret. Visuel browserkontrol og test på fysiske Windows-/Samsung-enheder af version 2 er endnu ikke gennemført.
+Der er ikke gennemført test på fysiske Windows-/Samsung-enheder.
 
-## Beregninger
+## Beregninger og kilder
 
-Løn er et estimat af brutto før skat og øvrige fradrag. Ukendte satser starter på 0 og skal udfyldes fra kontrakten. Appen antager ingen lovbestemte satser, ferierettigheder eller automatisk sygeløn. Pension, frivalg og fravær følger de gemte indstillinger.
+Løn er estimeret brutto før skat og øvrige fradrag. Ukendte satser starter på 0. Appen antager ingen lovbestemte satser, ferierettigheder eller automatisk sygeløn. De oplyste ordninger giver henholdsvis 36,99, 37 og 36,6 normale timer pr. uge; dagsgrænserne ændres ikke stiltiende til præcist 37 timer. Læs [RULES.md](RULES.md) før sammenligning med lønsedler.
 
-De angivne ordninger giver 3 × 12,33 = **36,99 timer**, 4 × 9,25 = **37 timer** og 4 × 7,4 + 7,0 = **36,6 timer**. Appen ændrer ikke dagstallene til præcist 37 timer. Du vælger ordning på job og registrering; de præcise grænser er defineret i `domain.js`. 12,33 er decimaltimer.
-
-Ekstra tømninger og andre opgaver ligger inden for vagtens start/slut og lægges ikke til arbejdstiden igen. Læs [beregningsprincipperne](RULES.md), før du sammenholder estimaterne med lønsedler.
-
-## Design og kildefiler
-
-Den orange/grafit-identitet bygger på brugerens leverede grafik, beskåret og skaleret til appbrug. Paletten bruger orange `#FF8A00`/`#FF6600`, grafit `#3E4045`, kulgrå `#25272B`, baggrund `#121315` og varm neutral `#D9D1C7`.
-
-Den faktiske Inter Variable-skrifttype leveres lokalt i `assets/fonts/InterVariable.woff2`, vægte 100–900. Den er hentet uændret fra [det officielle Inter-projekt, version 4.1](https://github.com/rsms/inter/tree/v4.1) og distribueres med [SIL Open Font License 1.1](assets/fonts/Inter-OFL.txt). Appen henter ikke skrifttypen fra en ekstern fonttjeneste.
-
-| Fil eller mappe | Formål |
+| Filer | Formål |
 | --- | --- |
-| `index.html`, `styles.css`, `brand.css` | Ramme, responsivt layout og det nye designsystem |
-| `app.js`, `panels.js`, `experience.js` | Navigation, formularer og sammenhængende visninger |
-| `domain.js`, `directory-domain.js` | Beregninger, validering og registerimport |
-| `directory-ui.js` | Vogn-/kollegaregister og dets dialoger |
-| `domain.test.js`, `directory-domain.test.js` | Beregnings- og datatests |
-| `assets/brand/`, `assets/fonts/` | Leveret grafik og lokal Inter med licens |
-| `manifest.webmanifest`, `icon-192.png`, `icon-512.png`, `sw.js` | Installation og offlinefiler |
-| `serve.mjs`, `check.mjs` | Lokal server og syntakskontrol |
+| `app.js`, `panels.js`, `experience.js` | Navigation, formularer og visninger |
+| `styles.css`, `brand.css`, `assets/brand/` | Responsivt orange/grafit-design og leveret grafik |
+| `domain.js`, `directory-domain.js`, `directory-ui.js` | Beregninger og lokalt register |
+| `pdf-reader.js`, `assets/pdfjs/` | Lokal PDF.js-læser med worker, tegnkort, fontdata og licenser |
+| `schedule-parser.js`, `schedule-domain.js`, `schedule-import-ui.js` | Genkendelse, kontrol og import af PDF-planer |
+| `timer-domain.js`, `timer-controller.js` | Daglig timer med separat lokal lagring |
+| `manifest.webmanifest`, `sw.js` | Installation og offlinefiler |
+| `serve.mjs`, `check.mjs`, `*.test.js` | Lokal server, syntakskontrol og tests |
 
-Lokalserveren tilføjer en Content Security Policy uden inline scripts eller `eval`. GitHub Pages understøtter ikke projektets egne HTTP-overskrifter. Hemmeligheder og private registre skal ikke ligge i klientkoden. Lokale browserdata kan læses af brugeren af den pågældende browserprofil.
+Inter Variable 4.1 ligger lokalt i `assets/fonts/InterVariable.woff2`, vægte 100–900, med [OFL-licens](assets/fonts/Inter-OFL.txt) fra [det officielle Inter-projekt](https://github.com/rsms/inter/tree/v4.1). Mozilla PDF.js 6.4.299 er leveret uændret under Apache-2.0; se [runtime og proveniens](assets/pdfjs/README.md).
+
+Lokalserveren bruger en Content Security Policy uden inline scripts eller `eval`. GitHub Pages understøtter ikke projektets egne HTTP-overskrifter. Private registre, PDF-filer og hemmeligheder skal holdes uden for den offentlige kildekode og offentlige udgivelser.
