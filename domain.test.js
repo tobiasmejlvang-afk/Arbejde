@@ -136,3 +136,11 @@ test('unknown contract benefits default to zero and sickness does not assume wag
   const state = fixture(); state.jobs = [job]; state.entries = [work('2026-10-19', {type: 'sick'})];
   assert.equal(calculateAll(state)[0].grossPay, 0);
 });
+test('malformed JSON text fields return validation errors without invoking object coercion', () => {
+  const state = fixture();
+  for (const patch of [{start: {toString: 'not a function'}}, {end: ['15:00']}, {extras: [{id: 'extra-example', kind: 'task', minutes: 1, task: {toString: 'not a function'}, paidOvertime: false}]}]) {
+    const candidate = work('2026-10-19', patch);
+    assert.ok(validateEntry(candidate, state).length > 0);
+    assert.equal(validateState({...state, entries: [candidate]}).ok, false);
+  }
+});

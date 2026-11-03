@@ -8,7 +8,7 @@ const ui = {
   progress: 0, progressText: '', error: '', notice: '', jobId: '',
   mode: 'person', target: '', search: '', selected: null, acknowledge: false,
   replaceImported: false, useDefaultTimes: false, defaultStart: '', defaultEnd: '',
-  yearHint: '', weekHint: '', rememberTarget: true, completed: null, pendingCommit: null
+  yearHint: '', weekHint: '', rememberTarget: true, completed: null, pendingCommit: null, stateScope: null
 };
 const kindLabels = { work: 'Arbejde', off: 'Fridag', holiday: 'Ferie', freeHoliday: 'Feriefridag', sick: 'Sygdom', absence: 'Fravær', unassigned: 'Ingen bemanding', unknown: 'Uafklaret' };
 const statusLabels = { new: 'Ny vagt', duplicate: 'Findes allerede', conflict: 'Konflikt', invalid: 'Skal rettes' };
@@ -131,14 +131,26 @@ function reviewPanel(ctx) {
   return `<section class="card schedule-review-card" id="schedule-review"><div class="panel-head"><div><span class="surface-label">03 · GENNEMSE FØR DU GEMMER</span><h2>Dine vagter til kalenderen</h2><p>${ui.target ? `${escape(ctx, ui.mode === 'person' ? ui.target : vehicleLabel(ui.target))} · ${escape(ctx, currentJob(ctx)?.name || 'Vælg job')}` : 'Vælg en person eller vogn for at se dit udsnit.'}</p></div><span class="badge">${chosen.length} valgt</span></div>${result.error ? `<p class="schedule-error">${escape(ctx, result.error)}</p>` : ''}${ui.target && currentJob(ctx) ? `<div class="schedule-review-summary"><span><b>${result.items.length}</b> rækker i dit udsnit</span><span><b>${ui.candidates.length - result.items.length}</b> øvrige rækker fra filerne</span><span><b>${otherPeople}</b> øvrige navne i filerne</span><span>${escape(ctx, summaryDates(result.items))}</span></div><div class="schedule-status-summary"><span>${counts.new} nye</span><span>${counts.duplicate} findes allerede</span><span>${counts.conflict} konflikter</span><span>${counts.invalid} skal rettes</span></div>${result.items.length ? `<div class="schedule-review-actions"><button class="button subtle" type="button" data-schedule-action="select-clear">Fravælg alle</button><button class="button secondary" type="button" data-schedule-action="select-clear-source">Vælg tydelige, nye vagter</button><p class="muted">Usikre navnematch og andre rækker til kontrol vælges altid aktivt af dig.</p></div><div class="table-wrap schedule-table-wrap"><table class="data-table schedule-review-table"><thead><tr><th><span class="sr-only">Vælg</span></th><th>Dato</th><th>Kilde: person & vogn / arbejdssted</th><th>Opgave / type</th><th>Tid fra PDF</th><th>Kontrol & kilde</th><th><span class="sr-only">Ret række</span></th></tr></thead><tbody>${result.items.map(item => reviewRow(ctx, item)).join('')}</tbody></table></div>` : '<div class="empty-state"><h3>Ingen vagter i dette udsnit</h3><p>Vælg en anden person eller vogn, eller kontrollér navnene i filen.</p></div>'}${replaceable ? `<label class="schedule-check schedule-replace-check"><input type="checkbox" data-schedule-option="replaceImported"${checked(ui.replaceImported)}><span>Jeg vil kunne erstatte tidligere PDF-vagter, der er i konflikt. Manuelle planer og gemte arbejdsregistreringer bliver ikke erstattet.</span></label>` : ''}${counts.conflict ? '<p class="schedule-conflict-note">Konflikter med manuelt oprettede planer eller gemte registreringer er blokeret. Der bliver ikke overskrevet noget uden dit valg.</p>' : ''}${defaultsInvalid ? '<p class="schedule-error">Angiv både start og slut for standardtider, og vælg to forskellige tider. Du kan også slå standardtider fra og gemme heldagsplaner.</p>' : ''}<div class="schedule-commit-area">${flagged ? `<label class="schedule-check schedule-acknowledgement"><input type="checkbox" data-schedule-option="acknowledge"${checked(ui.acknowledge)}><span>Jeg har kontrolleret datoer, navne og indhold for de ${flagged} valgte rækker, som kræver gennemgang.</span></label>` : ''}<div class="schedule-commit-actions"><p><strong>${chosen.length} vagter valgt</strong><span>Gemmes som planer. Timer og løn tæller først, når arbejdsdagen registreres.</span></p><button class="button primary" type="button" data-schedule-action="commit"${!canCommit ? ' disabled' : ''}>Tilføj ${chosen.length} vagter</button></div></div>` : '<div class="schedule-pick-first"><p>Vælg job og derefter den person eller vogn, du vil importere for. Hele holdets plan bliver ikke tilføjet.</p></div>'}</section>`;
 }
 
-function recoveryPanel() {
+function recoveryPanel(ctx) {
   const pending = ui.pendingCommit;
-  return `<section class="card schedule-save-recovery" role="alert"><div><span class="surface-label">IMPORTEN ER IKKE GEMT ENDNU</span><h2>${pending.added} vagter er kun i hukommelsen</h2><p>Planerne og dit eventuelle daglige standardvalg er klar i appen, men browseren kunne ikke gemme dem. Gennemgangen er beholdt, så du ikke behøver læse PDF-filerne igen.</p><p>Hold denne side åben. Prøv at gemme igen, eller åbn backup og download en sikkerhedskopi af oplysningerne i hukommelsen.</p></div><div class="schedule-recovery-actions"><button class="button primary" type="button" data-schedule-action="retry-save">Prøv at gemme igen</button><button class="button secondary" type="button" data-schedule-action="open-backup">Åbn backup</button></div></section>`;
+  return `<section class="card schedule-save-recovery" role="alert"><div><span class="surface-label">IMPORTEN ER IKKE GEMT ENDNU</span><h2>${pending.added} vagter er kun i hukommelsen</h2><p>Planerne og dit eventuelle daglige standardvalg er klar i appen, men browseren kunne ikke gemme dem. Gennemgangen er beholdt, så du ikke behøver læse PDF-filerne igen.</p><p>${ctx.isDemo ? 'Din klargjorte import tilhører dine egne data. Skift ud af demovisningen, før du gemmer eller tager backup af importen.' : 'Hold denne side åben. Prøv at gemme igen, eller åbn backup og download en sikkerhedskopi af oplysningerne i hukommelsen.'}</p></div><div class="schedule-recovery-actions">${ctx.isDemo ? '<button class="button primary" type="button" data-action="exit-demo">Til mine egne data</button>' : '<button class="button primary" type="button" data-schedule-action="retry-save">Prøv at gemme igen</button><button class="button secondary" type="button" data-schedule-action="open-backup">Åbn backup</button>'}</div></section>`;
 }
 
 export function renderScheduleImport(ctx) {
-  if (!ctx.state.jobs.some(job => job.id === ui.jobId)) ui.jobId = ctx.state.settings.defaultJobId || ctx.state.jobs[0]?.id || '';
-  return `<div id="schedule-import"><div class="page-heading"><div class="page-intro">${icon('calendar', 64, 'page-title-icon')}<div class="page-heading-copy"><span class="section-label">DIN PLAN, UDEN GENINDTASTNING</span><h1>Importér arbejdsplan</h1><p class="muted">Læs PDF-filerne lokalt. Vælg dit eget udsnit, og gennemse vagterne før de lægges i kalenderen.</p></div></div></div>${ui.error ? `<div class="notice error-notice" role="alert">${escape(ctx, ui.error)}</div>` : ''}${ui.notice ? `<div class="notice" role="status">${escape(ctx, ui.notice)}</div>` : ''}${ui.pendingCommit ? recoveryPanel() : ''}${ui.completed ? `<section class="card schedule-complete"><div>${icon('calendar', 76)}<span class="surface-label">PLANEN ER KLAR</span><h2>${ui.completed.added} vagter tilføjet</h2><p>${ui.completed.replaced ? `${ui.completed.replaced} tidligere PDF-vagter blev erstattet. ` : ''}${ui.completed.skipped ? `${ui.completed.skipped} rækker blev sprunget over. ` : ''}Åbn kalenderen for at se planen og registrere dagen, når du har arbejdet.</p></div><button class="button primary" type="button" data-schedule-action="calendar">Åbn kalender</button><button class="button secondary" type="button" data-schedule-action="reset">Importér en ny plan</button></section>` : ''}${uploadPanel(ctx)}${ui.warnings.length && !ui.busy ? `<details class="card schedule-file-warnings"><summary>${ui.warnings.length} beskeder fra læsningen</summary><ul>${ui.warnings.map(message => `<li>${escape(ctx, warningText(message))}</li>`).join('')}</ul></details>` : ''}${ui.candidates.length && !ui.busy && !ui.completed && !ui.pendingCommit ? `<div class="schedule-workspace">${selectionPanel(ctx)}${reviewPanel(ctx)}</div>` : ''}</div>`;
+  if (ui.stateScope && ui.stateScope !== ctx.state) {
+    ui.selected = new Set(); ui.acknowledge = false; ui.replaceImported = false;
+    if (ui.completed) { ui.completed = null; ui.files = []; }
+    if (ui.pendingCommit && !ctx.isDemo && ui.pendingCommit.planIds.filter(id => ctx.state.plans.some(plan => plan.id === id)).length < ui.pendingCommit.added) {
+      ui.pendingCommit = null;
+      ui.error = 'De aktuelle data er ændret. Gennemgå dit udvalg igen; de læste PDF-rækker er beholdt.';
+    }
+  }
+  ui.stateScope = ctx.state;
+  if (!ctx.state.jobs.some(job => job.id === ui.jobId)) {
+    if (ui.jobId) { ui.selected = new Set(); ui.acknowledge = false; }
+    ui.jobId = ctx.state.settings.defaultJobId || ctx.state.jobs[0]?.id || '';
+  }
+  return `<div id="schedule-import"><div class="page-heading"><div class="page-intro">${icon('calendar', 64, 'page-title-icon')}<div class="page-heading-copy"><span class="section-label">DIN PLAN, UDEN GENINDTASTNING</span><h1>Importér arbejdsplan</h1><p class="muted">Læs PDF-filerne lokalt. Vælg dit eget udsnit, og gennemse vagterne før de lægges i kalenderen.</p></div></div></div>${ui.error ? `<div class="notice error-notice" role="alert">${escape(ctx, ui.error)}</div>` : ''}${ui.notice ? `<div class="notice" role="status">${escape(ctx, ui.notice)}</div>` : ''}${ui.pendingCommit ? recoveryPanel(ctx) : ''}${ui.completed ? `<section class="card schedule-complete"><div>${icon('calendar', 76)}<span class="surface-label">PLANEN ER KLAR</span><h2>${ui.completed.added} vagter tilføjet</h2><p>${ui.completed.replaced ? `${ui.completed.replaced} tidligere PDF-vagter blev erstattet. ` : ''}${ui.completed.skipped ? `${ui.completed.skipped} rækker blev sprunget over. ` : ''}Åbn kalenderen for at se planen og registrere dagen, når du har arbejdet.</p></div><button class="button primary" type="button" data-schedule-action="calendar">Åbn kalender</button><button class="button secondary" type="button" data-schedule-action="reset">Importér en ny plan</button></section>` : ''}${uploadPanel(ctx)}${ui.warnings.length && !ui.busy ? `<details class="card schedule-file-warnings"><summary>${ui.warnings.length} beskeder fra læsningen</summary><ul>${ui.warnings.map(message => `<li>${escape(ctx, warningText(message))}</li>`).join('')}</ul></details>` : ''}${ui.candidates.length && !ui.busy && !ui.completed && !ui.pendingCommit ? `<div class="schedule-workspace">${selectionPanel(ctx)}${reviewPanel(ctx)}</div>` : ''}</div>`;
 }
 
 function resetSelection() {
@@ -154,7 +166,7 @@ function renderWithFocus(ctx, attribute, value) {
 function resetImport() {
   ui.controller?.abort();
   ui.run++;
-  Object.assign(ui, { files: [], candidates: [], warnings: [], busy: false, controller: null, progress: 0, progressText: '', error: '', notice: '', target: '', search: '', selected: null, acknowledge: false, replaceImported: false, rememberTarget: true, completed: null, pendingCommit: null });
+  Object.assign(ui, { files: [], candidates: [], warnings: [], busy: false, controller: null, progress: 0, progressText: '', error: '', notice: '', target: '', search: '', selected: null, acknowledge: false, replaceImported: false, useDefaultTimes: false, defaultStart: '', defaultEnd: '', rememberTarget: true, completed: null, pendingCommit: null });
 }
 
 function cancelReading(ctx) {
@@ -249,6 +261,7 @@ function editRow(ctx, id) {
 
 function savePreparedImport(ctx) {
   if (!ui.pendingCommit) return false;
+  if (ctx.isDemo) { ctx.toast('Skift til dine egne data for at gemme den klargjorte import.'); return false; }
   const present = ui.pendingCommit.planIds.filter(id => ctx.state.plans.some(plan => plan.id === id)).length;
   if (present < ui.pendingCommit.added) {
     ui.pendingCommit = null;
@@ -269,7 +282,8 @@ function savePreparedImport(ctx) {
   }
   const pending = ui.pendingCommit;
   const retained = pending.planIds.filter(id => ctx.state.plans.some(plan => plan.id === id)).length;
-  ui.completed = { added: Math.min(pending.added, retained), skipped: pending.skipped, replaced: pending.replaced };
+  const dates = ctx.state.plans.filter(plan => pending.planIds.includes(plan.id) && plan.date).map(plan => plan.date).sort();
+  ui.completed = { added: Math.min(pending.added, retained), skipped: pending.skipped, replaced: pending.replaced, firstDate: dates[0] || '' };
   ui.pendingCommit = null;
   ui.candidates = []; ui.selected = null; ui.warnings = []; ui.target = ''; ui.notice = ''; ui.error = '';
   ctx.render();
@@ -307,9 +321,9 @@ function act(ctx, button) {
   if (action === 'cancel') return cancelReading(ctx);
   if (action === 'reset') { if (ui.pendingCommit) { ctx.toast('Gem den klargjorte import, før du starter forfra. Din gennemgang er beholdt.'); return; } resetImport(); ctx.render(); return; }
   if (action === 'retry-save') return savePreparedImport(ctx);
-  if (action === 'open-backup') return ctx.navigate('eksport');
+  if (action === 'open-backup') { if (ctx.isDemo) { ctx.toast('Skift til dine egne data for at tage backup af den klargjorte import.'); return; } return ctx.navigate('eksport'); }
   if (action === 'new-job') return ctx.navigate('job');
-  if (action === 'calendar') return ctx.navigate('kalender');
+  if (action === 'calendar') { if (ui.completed?.firstDate && typeof ctx.setCalendarDate === 'function') ctx.setCalendarDate(ui.completed.firstDate); return ctx.navigate('kalender'); }
   if (action === 'mode' && ['person', 'vehicle'].includes(mode)) { ui.mode = mode; ui.target = ''; ui.search = ''; resetSelection(); renderWithFocus(ctx, 'data-mode', mode); return; }
   if (action === 'target') { ui.target = value; resetSelection(); renderWithFocus(ctx, 'data-value', value); return; }
   if (action === 'select-clear') { ui.selected = new Set(); ui.acknowledge = false; renderWithFocus(ctx, 'data-schedule-action', action); return; }

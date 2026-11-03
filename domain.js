@@ -11,7 +11,7 @@ const stamp = date => Date.parse(date + 'T00:00:00Z');
 const iso = value => new Date(value).toISOString().slice(0, 10);
 const round = (value, precision = 2) => Math.round((value + Number.EPSILON) * 10 ** precision) / 10 ** precision;
 const numeric = value => typeof value === 'number' && Number.isFinite(value);
-const timeValue = value => /^([01]\d|2[0-3]):[0-5]\d$/.test(value || '') ? Number(value.slice(0, 2)) * 60 + Number(value.slice(3)) : null;
+const timeValue = value => typeof value === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(value) ? Number(value.slice(0, 2)) * 60 + Number(value.slice(3)) : null;
 const own = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
 const record = value => !!value && typeof value === 'object' && !Array.isArray(value) && Object.getPrototypeOf(value) === Object.prototype;
 
@@ -147,7 +147,7 @@ function validateExtra(extra, index) {
   if (!['emptying', 'task'].includes(extra.kind)) errors.push(`${label}: vælg en type.`);
   if (!numeric(extra.minutes) || extra.minutes <= 0 || extra.minutes > 1440) errors.push(`${label}: tidsforbrug skal være mellem 1 og 1.440 minutter.`);
   if (typeof extra.paidOvertime !== 'boolean') errors.push(`${label}: overarbejdsbetaling skal vælges.`);
-  if (extra.kind === 'task' && !String(extra.task || '').trim()) errors.push(`${label}: beskriv arbejdsopgaven.`);
+  if (extra.kind === 'task' && (typeof extra.task !== 'string' || !extra.task.trim())) errors.push(`${label}: beskriv arbejdsopgaven.`);
   if (extra.waste && !WASTE_TYPES.includes(extra.waste)) errors.push(`${label}: ukendt affaldstype.`);
   return errors;
 }

@@ -8,7 +8,8 @@ const unique = values => [...new Set(values.filter(Boolean))];
 const time = value => typeof value === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(value) ? Number(value.slice(0, 2)) * 60 + Number(value.slice(3)) : null;
 const dateValid = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(value + 'T00:00:00Z')) && new Date(value + 'T00:00:00Z').toISOString().slice(0, 10) === value;
 const jsonClone = value => JSON.parse(JSON.stringify(value));
-const people = plan => unique([plan.driver, plan.colleague, ...(plan.people || [])].map(normalize));
+const people = plan => unique([plan.driver, ...String(plan.colleague || '').split(','), ...(plan.people || [])].map(normalize));
+const replaceablePdf = plan => plan.source?.type === 'pdf' && dateValid(plan.date);
 function interval(plan, date = plan.date) {
   if (!dateValid(date)) return null;
   const stamp = Date.parse(date + 'T00:00:00Z'), start = time(plan.start), end = time(plan.end);
@@ -104,8 +105,8 @@ export function prepareScheduleImport(state, candidates, options = {}) {
           item.status = 'conflict';
           item.existingPlanIds = oldPlans.map(plan => plan.id);
           item.batchConflictOnly = batch.length > 0 && !oldPlans.length && !actual.length;
-          item.canReplace = !actual.length && !batch.length && oldPlans.length > 0 && oldPlans.every(plan => plan.source?.type === 'pdf');
-          item.warnings.push(actual.length ? 'Der findes allerede faktisk registreret arbejde eller fravær.' : batch.length ? 'En anden kandidat i denne import overlapper.' : item.canReplace ? 'En tidligere PDF-plan overlapper og kan erstattes efter dit valg.' : 'En manuel arbejdsplan overlapper og bevares.');
+          item.canReplace = !actual.length && !batch.length && oldPlans.length > 0 && oldPlans.every(replaceablePdf);
+          item.warnings.push(actual.length ? 'Der findes allerede faktisk registreret arbejde eller fravær.' : batch.length ? 'En anden kandidat i denne import overlapper.' : item.canReplace ? 'En tidligere PDF-plan overlapper og kan erstattes efter dit valg.' : 'En manuel eller gentaget arbejdsplan overlapper og bevares.');
         }
       }
       if (item.status === 'new' || item.status === 'conflict') accepted.push(plan);
@@ -134,7 +135,7 @@ export function applyScheduleImport(state, preview, selectedIds, {replaceImporte
     if (incoming.some(other => overlaps(plan, other))) throw new Error('De valgte planer overlapper hinanden.');
     const conflicts = current.filter(other => overlaps(plan, other));
     if (conflicts.length) {
-      if (!replaceImported || conflicts.some(other => other.source?.type !== 'pdf')) throw new Error('Planen overlapper en manuel eller ubekræftet plan.');
+      if (!replaceImported || conflicts.some(other => !replaceablePdf(other))) throw new Error('Planen overlapper en manuel, gentaget eller ubekræftet plan.');
       conflicts.forEach(other => removed.add(other.id));
     }
     // Same content in a newly named PDF is still duplicate; provenance is preserved.

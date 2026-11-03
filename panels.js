@@ -2,7 +2,7 @@ import { defaultJob, uid, todayISO, addDays, payPeriod, money, hours, validateSt
 
 const typeLabels = { work: 'Arbejdsdag', sick: 'Sygdom', off: 'Fridag', holiday: 'Ferie', freeHoliday: 'Feriefridag', absence: 'Fravær' };
 const weekdays = ['Mandag', 'Tirsdag', 'Onsdag', 'Torsdag', 'Fredag', 'Lørdag', 'Søndag'];
-const ui = { month: null, work: { query: '', job: '', type: '', month: '' } };
+const ui = { month: null, calendarSource: null, work: { query: '', job: '', type: '', month: '' } };
 const safeDate = value => new Date(`${String(value).slice(0, 10)}T12:00:00`);
 const isoDate = date => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 const schemeLabel = scheme => Number(scheme) === 3 ? '3 dage · 12,33 t/dag' : Number(scheme) === 4 ? '4 dage · 9,25 t/dag' : '5 dage · 7,4 / 7,0 t';
@@ -21,8 +21,8 @@ function pageHeading(icon, label, title, description, actions = '') {
 }
 
 function field(ctx, label, name, value = '', options = {}) {
-  const { type = 'text', required = false, min, max, step, hint, full = false, placeholder = '' } = options;
-  return `<label class="field${full ? ' full' : ''}"><span>${label}</span><input name="${name}" type="${type}" value="${attr(ctx, value)}"${required ? ' required' : ''}${min !== undefined ? ` min="${min}"` : ''}${max !== undefined ? ` max="${max}"` : ''}${step !== undefined ? ` step="${step}"` : ''}${placeholder ? ` placeholder="${attr(ctx, placeholder)}"` : ''}>${hint ? `<small class="field-hint muted">${hint}</small>` : ''}</label>`;
+  const { type = 'text', required = false, min, max, step, maxLength, hint, full = false, placeholder = '' } = options;
+  return `<label class="field${full ? ' full' : ''}"><span>${label}</span><input name="${name}" type="${type}" value="${attr(ctx, value)}"${required ? ' required' : ''}${min !== undefined ? ` min="${min}"` : ''}${max !== undefined ? ` max="${max}"` : ''}${step !== undefined ? ` step="${step}"` : ''}${maxLength !== undefined ? ` maxlength="${maxLength}"` : ''}${placeholder ? ` placeholder="${attr(ctx, placeholder)}"` : ''}>${hint ? `<small class="field-hint muted">${hint}</small>` : ''}</label>`;
 }
 
 function selectField(ctx, label, name, value, options, full = false) {
@@ -44,6 +44,7 @@ function download(filename, content, type) {
 
 function calendarMonth(ctx) {
   const incoming = ctx.calendarDate instanceof Date ? isoDate(ctx.calendarDate) : ctx.calendarDate;
+  if (incoming && incoming !== ui.calendarSource) { ui.calendarSource = incoming; ui.month = incoming; }
   const value = ui.month || incoming || todayISO();
   const date = safeDate(value);
   return new Date(date.getFullYear(), date.getMonth(), 1, 12);
@@ -155,11 +156,12 @@ function workTable(ctx) {
   if (!rows.length) return `<div class="empty-state">${brandIcon('time', 'empty-art', 88)}<h3>Ingen registreringer fundet</h3><p>Prøv et andet filter, eller giv en ny arbejdsdag plads i dit overblik.</p><button class="button primary" data-panel-action="new-work">+ Registrer arbejdsdag</button></div>`;
   return `<div class="table-wrap"><table class="data-table"><thead><tr><th>Dato & job</th><th>Registrering</th><th>Vogn / tur</th><th>Arbejdet</th><th>Overarbejde</th><th>Lønoverslag</th><th><span class="sr-only">Handlinger</span></th></tr></thead><tbody>${rows.map(row => {
     const entry = row.entry;
-    return `<tr><td><strong>${dateText(entry.date)}</strong><small class="muted">${attr(ctx, jobName(ctx, entry.jobId))}</small></td><td><span class="badge${entry.type === 'work' ? '' : ' neutral'}">${typeLabels[entry.type] || 'Fravær'}</span>${entry.type === 'work' ? `<small class="muted">${attr(ctx, entry.start || '')}–${attr(ctx, entry.end || '')}</small>` : ''}</td><td>${entry.vehicle ? `Vogn ${attr(ctx, entry.vehicle)}` : '—'}<small class="muted">${entry.route ? `Tur ${attr(ctx, entry.route)}` : ''}</small>${entry.driver ? `<small class="muted">Chauffør: ${attr(ctx, entry.driver)}</small>` : ''}${entry.colleague ? `<small class="muted">Kollega: ${attr(ctx, entry.colleague)}</small>` : ''}</td><td>${hours(row.actualHours || 0)}</td><td>${number(row.overtimeHours) > 0 ? `<strong class="accent-text">${hours(row.overtimeHours)}</strong>` : '—'}</td><td>${row.rateMissing ? '<span class="muted">Sats mangler</span>' : money(row.grossPay || 0)}</td><td><div class="row-actions"><button class="button subtle" data-panel-action="edit-entry" data-id="${attr(ctx, entry.id)}">Ret</button><button class="button subtle danger" data-panel-action="delete-entry" data-id="${attr(ctx, entry.id)}">Slet</button></div></td></tr>`;
+    return `<tr><td><strong>${dateText(entry.date)}</strong><small class="muted">${attr(ctx, jobName(ctx, entry.jobId))}</small></td><td><span class="badge${entry.type === 'work' ? '' : ' neutral'}">${typeLabels[entry.type] || 'Fravær'}</span>${entry.type === 'work' ? `<small class="muted">${attr(ctx, entry.start || '')}–${attr(ctx, entry.end || '')}</small>` : ''}</td><td>${entry.vehicle ? attr(ctx, /^\d+$/.test(String(entry.vehicle).trim()) ? `Vogn ${entry.vehicle}` : entry.vehicle) : '—'}<small class="muted">${entry.route ? `Tur ${attr(ctx, entry.route)}` : ''}</small>${entry.driver ? `<small class="muted">Chauffør: ${attr(ctx, entry.driver)}</small>` : ''}${entry.colleague ? `<small class="muted">Kollega: ${attr(ctx, entry.colleague)}</small>` : ''}</td><td>${hours(row.actualHours || 0)}</td><td>${number(row.overtimeHours) > 0 ? `<strong class="accent-text">${hours(row.overtimeHours)}</strong>` : '—'}</td><td>${row.rateMissing ? '<span class="muted">Sats mangler</span>' : money(row.grossPay || 0)}</td><td><div class="row-actions"><button class="button subtle" data-panel-action="edit-entry" data-id="${attr(ctx, entry.id)}">Ret</button><button class="button subtle danger" data-panel-action="delete-entry" data-id="${attr(ctx, entry.id)}">Slet</button></div></td></tr>`;
   }).join('')}</tbody><tfoot><tr><td colspan="3">${rows.length} registreringer</td><td>${hours(rows.reduce((sum, row) => sum + number(row.actualHours), 0))}</td><td>${hours(rows.reduce((sum, row) => sum + number(row.overtimeHours), 0))}</td><td>${money(rows.reduce((sum, row) => sum + number(row.grossPay), 0))}</td><td></td></tr></tfoot></table></div>`;
 }
 
 export function renderWork(ctx) {
+  if (ui.work.job && !ctx.state.jobs.some(job => job.id === ui.work.job)) ui.work.job = '';
   return `${pageHeading('time', 'DETALJERNE I DIN ARBEJDSDAG', 'Arbejde', 'Alle dine registreringer. Find dagen, ret detaljerne, eller tag tallene med dig.', '<button class="button secondary" data-panel-action="export-csv">Eksportér CSV</button><button class="button primary" data-panel-action="new-work">+ Registrer arbejde</button>')}
     <section class="card filter-region" aria-label="Filtrer registreringer"><div class="filter-region-heading"><span class="surface-label">FIND DET, DU LEDER EFTER</span><span class="muted">Vælg job, type eller måned</span></div><div class="work-filters form-grid"><label class="field"><span>Søg i dit arbejde</span><input type="search" data-work-filter="query" placeholder="Job, vogn, tur eller note…" value="${attr(ctx, ui.work.query)}"></label><label class="field"><span>Job</span><select data-work-filter="job"><option value="">Alle job</option>${ctx.state.jobs.map(job => `<option value="${attr(ctx, job.id)}"${selected(ui.work.job, job.id)}>${attr(ctx, job.name)}</option>`).join('')}</select></label><label class="field"><span>Type</span><select data-work-filter="type"><option value="">Alle registreringer</option>${Object.entries(typeLabels).map(([key, label]) => `<option value="${key}"${selected(ui.work.type, key)}>${label}</option>`).join('')}</select></label><label class="field"><span>Måned</span><input type="month" data-work-filter="month" value="${attr(ctx, ui.work.month)}"></label></div><div class="toolbar filter-toolbar"><span class="muted" id="work-result-count" aria-live="polite">${filteredRows(ctx).length} registreringer</span><button class="button subtle" data-panel-action="reset-filters">Nulstil filtre</button></div></section>
     <section class="card work-results"><div class="panel-head work-results-head"><div><span class="surface-label">DIT ARKIV</span><h2>Registreringer</h2></div><span class="muted">Timer og løn beregnes automatisk</span></div><div id="work-table">${workTable(ctx)}</div></section>`;
@@ -175,7 +177,7 @@ export function renderSettings(ctx) {
   const settings = ctx.state.settings;
   const installed = Boolean(ctx.isInstalled || globalThis.matchMedia?.('(display-mode: standalone)')?.matches);
   return `${pageHeading('settings', 'ET ARBEJDSRUM, DER PASSER DIG', 'Indstillinger', 'Din profil, dine faste valg og dine data. Samlet på ét sted.')}
-    <div class="settings-layout"><section class="card settings-section settings-profile-card full"><div class="settings-section-head"><div class="panel-title-group">${brandIcon('settings', 'panel-icon', 48)}<div><span class="surface-label">01 · PERSONLIGT</span><h2>Profil & standardvalg</h2></div></div></div><p class="settings-copy muted">Gør det personligt. Dit standardjob er klar, hver gang du registrerer en ny dag.</p><form id="settings-form" class="form-grid">${field(ctx, 'Dit navn', 'name', settings.name, { placeholder: 'Dit navn' })}${selectField(ctx, 'Standardjob', 'defaultJobId', settings.defaultJobId, [['', 'Vælg job'], ...ctx.state.jobs.map(job => [job.id, job.name])])}${settingsDefaults(ctx)}<div class="full"><button class="button primary" type="submit">Gem indstillinger</button></div></form></section>
+    <div class="settings-layout"><section class="card settings-section settings-profile-card full"><div class="settings-section-head"><div class="panel-title-group">${brandIcon('settings', 'panel-icon', 48)}<div><span class="surface-label">01 · PERSONLIGT</span><h2>Profil & standardvalg</h2></div></div></div><p class="settings-copy muted">Gør det personligt. Dit standardjob er klar, hver gang du registrerer en ny dag.</p><form id="settings-form" class="form-grid">${field(ctx, 'Dit navn', 'name', settings.name, { placeholder: 'Dit navn', maxLength: 200 })}${selectField(ctx, 'Standardjob', 'defaultJobId', settings.defaultJobId, [['', 'Vælg job'], ...ctx.state.jobs.map(job => [job.id, job.name])])}${settingsDefaults(ctx)}<div class="full"><button class="button primary" type="submit">Gem indstillinger</button></div></form></section>
     <section class="settings-section full"><div class="settings-section-head"><div><span class="surface-label">02 · DINE FASTE VALG</span><h2>Klar til næste arbejdsdag</h2><p class="muted">Dine vogne og ture er lige ved hånden, når du registrerer.</p></div></div><div class="settings-quick-grid">${[['vehicles', 'Vogne', 'Vognnummer', 'vehicle'], ['routes', 'Ture', 'Turnummer', 'time']].map(([key, title, label, icon]) => `<section class="card settings-quick-card"><div class="panel-head"><div class="panel-title-group">${brandIcon(icon)}<h3>${title}</h3></div><button class="button secondary" data-panel-action="new-list-item" data-list="${key}">+ Tilføj</button></div>${ctx.state[key].length ? `<ul class="settings-list">${ctx.state[key].map((value, index) => `<li><span><span class="muted">${label}</span> <strong>${attr(ctx, value)}</strong></span><div class="row-actions"><button class="button subtle" data-panel-action="edit-list-item" data-list="${key}" data-index="${index}" aria-label="Ret ${label.toLowerCase()} ${attr(ctx, value)}">Ret</button><button class="button subtle danger" data-panel-action="delete-list-item" data-list="${key}" data-index="${index}" aria-label="Fjern ${label.toLowerCase()} ${attr(ctx, value)}">Fjern</button></div></li>`).join('')}</ul>` : `<div class="empty-state compact"><p>Ingen ${title.toLowerCase()} tilføjet endnu.</p><button class="button secondary" data-panel-action="new-list-item" data-list="${key}">Tilføj ${label.toLowerCase()}</button></div>`}<p class="muted field-hint">Ændringer i listen påvirker ikke gemte registreringer eller planer.</p></section>`).join('')}</div></section>
     <section class="card settings-section settings-data-card"><div class="settings-section-head"><div class="panel-title-group">${brandIcon('export', 'panel-icon', 48)}<div><span class="surface-label">03 · DINE DATA</span><h2>En kopi, du selv har styr på</h2></div></div></div><p class="settings-copy muted">Dine registreringer gemmes lokalt i denne browser på denne enhed. Download en sikkerhedskopi, når du vil passe på dem eller flytte dem til en anden enhed.</p><div class="backup-actions"><button class="button primary" data-panel-action="backup">Download sikkerhedskopi</button><button class="button secondary" data-panel-action="import">Importér kopi</button><input id="backup-file" type="file" accept="application/json,.json" hidden></div><p class="muted field-hint">Import erstatter de nuværende data efter din bekræftelse. Automatisk synkronisering mellem enheder er ikke aktiveret.</p></section>
     <section class="card settings-section settings-install-card"><div class="settings-section-head"><div class="panel-title-group">${brandIcon('overview', 'panel-icon', 48)}<div><span class="surface-label">04 · LIGE VED HÅNDEN</span><h2>Dit arbejdsrum som app</h2></div></div></div><p class="settings-copy muted">Åbn direkte fra skrivebordet på din Windows-computer eller startskærmen på din Samsung-tablet. Dit overblik er kun ét tryk væk.</p><button class="button secondary" type="button" data-action="install-app"${installed ? ' disabled' : ''}>${installed ? 'Appen er allerede installeret' : 'Installér app'}</button><p class="muted field-hint">Brug samme browserprofil til dine lokale data, og gem en sikkerhedskopi, før du rydder browserdata.</p></section></div>`;
@@ -198,6 +200,14 @@ export function renderCreate(ctx) {
     <section class="create-section"><div class="create-section-heading"><span class="surface-label">FRIHED & FRAVÆR</span><h2>Plads til dagene imellem</h2></div><div class="create-grid">${cards(choices.slice(3))}</div></section>`;
 }
 
+function saveChange(ctx, message, options) {
+  let saved = false;
+  try { saved = ctx.save(options) !== false; } catch { /* Keep the validated change in memory and the form open. */ }
+  if (!saved) { ctx.toast('Ændringen er kun i hukommelsen. Prøv at gemme igen, eller download en sikkerhedskopi.'); return false; }
+  ctx.toast(ctx.isDemo ? 'Ændringen vises kun i demovisningen og gemmes ikke.' : message);
+  return true;
+}
+
 function editJob(ctx, id) {
   const job = id ? getJob(ctx, id) : defaultJob({ name: '', hourlyRate: 0, overtimeRate: 0 });
   if (!job) return;
@@ -212,12 +222,12 @@ function editJob(ctx, id) {
     updated.scheme = String(data.get('scheme'));
     for (const key of ['hourlyRate', 'overtimeRate', 'payday', 'paydayOffset', 'pensionEmployee', 'pensionEmployer', 'choicePercent', 'holidayPercent', 'holidayDays', 'freeHolidayDays', 'sickPayPercent']) updated[key] = number(data.get(key));
     if (updated.periodType === '14days' && !updated.periodAnchor) { ctx.toast('Vælg første dag i en 14-dages lønperiode.'); return false; }
-    const jobs = id ? ctx.state.jobs.map(item => item.id === id ? updated : item) : [...ctx.state.jobs, updated];
+    const jobs = ctx.state.jobs.some(item => item.id === updated.id) ? ctx.state.jobs.map(item => item.id === updated.id ? updated : item) : [...ctx.state.jobs, updated];
     const validation = validateState({ ...ctx.state, jobs, settings: { ...ctx.state.settings, defaultJobId: ctx.state.settings.defaultJobId || updated.id } });
     if (!validation.ok) { ctx.toast(validation.errors[0] || 'Kontrollér oplysningerne i kontrakten.'); return false; }
     ctx.state.jobs = jobs;
     if (!ctx.state.settings.defaultJobId) ctx.state.settings.defaultJobId = updated.id;
-    ctx.closeModal(); ctx.save(); ctx.toast(id ? 'Kontrakten er opdateret.' : 'Dit job er oprettet.');
+    return saveChange(ctx, id ? 'Kontrakten er opdateret.' : 'Dit job er oprettet.');
   });
 }
 
@@ -227,37 +237,46 @@ function editPlan(ctx, id) {
   const job = getJob(ctx, jobId);
   let plan = id ? ctx.state.plans.find(item => item.id === id) : { id: uid(), title: '', jobId, from: todayISO(), to: addDays(todayISO(), 27), weekdays: Number(job?.scheme) === 3 ? [1, 2, 3] : Number(job?.scheme) === 4 ? [1, 2, 3, 4] : [1, 2, 3, 4, 5], scheme: job?.scheme || '3', start: '06:00', end: '14:00', vehicle: '', route: '' };
   if (!plan) return;
+  const singleDate = Boolean(plan.date);
   if (plan.date) plan = { ...plan, from: plan.date, to: plan.date, weekdays: [safeDate(plan.date).getDay() || 7], scheme: plan.scheme || getJob(ctx, plan.jobId)?.scheme || '3' };
   const listSelect = (label, name, values, value) => selectField(ctx, label, name, value, [['', 'Ikke valgt'], ...Array.from(new Set([...values, ...(value ? [value] : [])])).map(text => [text, text])]);
-  ctx.modal(id ? 'Ret arbejdsplan' : 'Tilføj arbejdsplan', `<div class="form-grid">${field(ctx, 'Navn på planen', 'title', plan.title, { required: true, placeholder: 'Fx fast ugeplan' })}${selectField(ctx, 'Job', 'jobId', plan.jobId, ctx.state.jobs.map(item => [item.id, item.name]))}${field(ctx, 'Fra dato', 'from', plan.from, { type: 'date', required: true })}${field(ctx, 'Til og med', 'to', plan.to, { type: 'date', required: true })}<fieldset class="field full weekday-picker"><legend>Arbejdsdage</legend><div class="check-group">${weekdays.map((day, index) => `<label><input type="checkbox" name="weekdays" value="${index + 1}"${checked(plan.weekdays.map(Number).includes(index + 1))}><span>${day.slice(0, 3)}</span></label>`).join('')}</div></fieldset>${schemeField(ctx, plan.scheme)}${listSelect('Vognnummer', 'vehicle', ctx.state.vehicles, plan.vehicle)}${listSelect('Turnummer', 'route', ctx.state.routes, plan.route)}${field(ctx, 'Starttid', 'start', plan.start, { type: 'time', required: true })}${field(ctx, 'Sluttid', 'end', plan.end, { type: 'time', required: true })}<p class="muted field-hint full">Planen vises i kalenderen. Timer og løn tæller først med, når du gemmer dagen som en registrering.</p></div>`, data => {
-    const chosenDays = data.getAll('weekdays').map(Number);
-    const from = String(data.get('from'));
-    const to = String(data.get('to'));
+  const dates = singleDate ? field(ctx, 'Dato', 'from', plan.from, { type: 'date', required: true }) : `${field(ctx, 'Fra dato', 'from', plan.from, { type: 'date', required: true })}${field(ctx, 'Til og med', 'to', plan.to, { type: 'date', required: true })}<fieldset class="field full weekday-picker"><legend>Arbejdsdage</legend><div class="check-group">${weekdays.map((day, index) => `<label><input type="checkbox" name="weekdays" value="${index + 1}"${checked(plan.weekdays.map(Number).includes(index + 1))}><span>${day.slice(0, 3)}</span></label>`).join('')}</div></fieldset>`;
+  ctx.modal(id ? 'Ret arbejdsplan' : 'Tilføj arbejdsplan', `<div class="form-grid">${field(ctx, 'Navn på planen', 'title', plan.title, { required: true, placeholder: 'Fx fast ugeplan' })}${selectField(ctx, 'Job', 'jobId', plan.jobId, ctx.state.jobs.map(item => [item.id, item.name]))}${dates}${schemeField(ctx, plan.scheme)}${listSelect('Vogn / arbejdssted', 'vehicle', ctx.state.vehicles, plan.vehicle)}${listSelect('Turnummer', 'route', ctx.state.routes, plan.route)}${field(ctx, 'Starttid · valgfrit', 'start', plan.start, { type: 'time' })}${field(ctx, 'Sluttid · valgfrit', 'end', plan.end, { type: 'time' })}<p class="muted field-hint full">Lad begge tidsfelter være tomme for en heldagsplan. Timer og løn tæller først, når du gemmer dagen som en registrering.</p></div>`, data => {
+    const from = String(data.get('from') || '');
+    const to = singleDate ? from : String(data.get('to') || '');
+    const chosenDays = singleDate ? [safeDate(from).getDay() || 7] : data.getAll('weekdays').map(Number);
     if (!chosenDays.length) { ctx.toast('Vælg mindst én arbejdsdag.'); return false; }
     if (to < from) { ctx.toast('Slutdatoen skal være på eller efter startdatoen.'); return false; }
-    if (String(data.get('start')) === String(data.get('end'))) { ctx.toast('Start og slut må ikke være ens.'); return false; }
-    const updated = { ...plan, title: String(data.get('title') || '').trim(), jobId: String(data.get('jobId')), from, to, weekdays: chosenDays, scheme: String(data.get('scheme')), start: String(data.get('start')), end: String(data.get('end')), vehicle: String(data.get('vehicle') || ''), route: String(data.get('route') || '') };
-    delete updated.date;
-    const plans = id ? ctx.state.plans.map(item => item.id === id ? updated : item) : [...ctx.state.plans, updated];
+    const start = String(data.get('start') || ''), end = String(data.get('end') || '');
+    if (Boolean(start) !== Boolean(end) || (start && start === end)) { ctx.toast('Angiv både start og slut, eller lad begge være tomme. Tiderne må ikke være ens.'); return false; }
+    const updated = { ...plan, title: String(data.get('title') || '').trim(), jobId: String(data.get('jobId')), from, to, weekdays: chosenDays, scheme: String(data.get('scheme')), start, end, vehicle: String(data.get('vehicle') || ''), route: String(data.get('route') || '') };
+    if (singleDate) { updated.date = from; delete updated.from; delete updated.to; delete updated.weekdays; }
+    else delete updated.date;
+    const plans = ctx.state.plans.some(item => item.id === updated.id) ? ctx.state.plans.map(item => item.id === updated.id ? updated : item) : [...ctx.state.plans, updated];
     const validation = validateState({ ...ctx.state, plans });
     if (!validation.ok) { ctx.toast(validation.errors[0] || 'Kontrollér oplysningerne i arbejdsplanen.'); return false; }
     ctx.state.plans = plans;
-    ctx.closeModal(); ctx.save(); ctx.toast(id ? 'Arbejdsplanen er opdateret.' : 'Arbejdsplanen er tilføjet.');
+    return saveChange(ctx, id ? 'Arbejdsplanen er opdateret.' : 'Arbejdsplanen er tilføjet.');
   });
 }
 
 function editListItem(ctx, key, index) {
   if (!['vehicles', 'routes'].includes(key)) return;
   const editing = index !== undefined && index !== null && index !== '';
+  let savedIndex = editing ? Number(index) : null;
   const old = editing ? ctx.state[key][Number(index)] : '';
   const label = key === 'vehicles' ? 'Vognnummer' : 'Turnummer';
-  ctx.modal(`${editing ? 'Ret' : 'Tilføj'} ${label.toLowerCase()}`, field(ctx, label, 'value', old, { required: true, full: true, placeholder: key === 'vehicles' ? 'Fx 142' : 'Fx 21A' }), data => {
+  ctx.modal(`${editing ? 'Ret' : 'Tilføj'} ${label.toLowerCase()}`, field(ctx, label, 'value', old, { required: true, full: true, maxLength: 100, placeholder: key === 'vehicles' ? 'Fx 142' : 'Fx 21A' }), data => {
     const value = String(data.get('value') || '').trim();
     if (!value) { ctx.toast(`Indtast et ${label.toLowerCase()}.`); return false; }
-    if (ctx.state[key].some((item, itemIndex) => item.toLocaleLowerCase() === value.toLocaleLowerCase() && itemIndex !== Number(editing ? index : -1))) { ctx.toast('Nummeret findes allerede på listen.'); return false; }
-    if (editing) ctx.state[key][Number(index)] = value;
-    else ctx.state[key].push(value);
-    ctx.closeModal(); ctx.save(); ctx.toast(`${label} er gemt.`);
+    if (ctx.state[key].some((item, itemIndex) => item.toLocaleLowerCase() === value.toLocaleLowerCase() && itemIndex !== savedIndex)) { ctx.toast('Nummeret findes allerede på listen.'); return false; }
+    const values = [...ctx.state[key]];
+    if (savedIndex !== null) values[savedIndex] = value; else values.push(value);
+    const validation = validateState({ ...ctx.state, [key]: values });
+    if (!validation.ok) { ctx.toast(validation.errors[0] || 'Kontrollér værdien på listen.'); return false; }
+    ctx.state[key] = values;
+    if (savedIndex === null) savedIndex = values.length - 1;
+    return saveChange(ctx, `${label} er gemt.`);
   });
 }
 
@@ -277,16 +296,20 @@ function exportCSV(ctx) {
 
 async function importBackup(ctx, file) {
   if (!file) return;
+  if (ctx.isDemo) { ctx.toast('Skift til dine egne data, før du importerer en sikkerhedskopi.'); return; }
+  if (ctx.timer?.snapshot?.()) { ctx.toast('Afslut timerens arbejdsdag, før du importerer en sikkerhedskopi.'); return; }
   if (file.size > 10 * 1024 * 1024) { ctx.toast('Filen er for stor. Vælg en sikkerhedskopi under 10 MB.'); return; }
   try {
     const data = JSON.parse(await file.text());
     const validation = validateState(data);
     if (!validation.ok) { ctx.toast(`Kopien kunne ikke indlæses: ${(validation.errors || []).slice(0, 2).join(' ') || 'Ugyldigt dataformat.'}`); return; }
     const incoming = validation.state;
-    ctx.showConfirm('Importér sikkerhedskopi?', `Kopien indeholder ${incoming.entries.length} registreringer, ${incoming.jobs.length} job og ${incoming.plans.length} arbejdsplaner. Den erstatter alle nuværende data på denne enhed. Download gerne en sikkerhedskopi først.`, () => {
-      Object.assign(ctx.state, incoming);
-      ui.work = { query: '', job: '', type: '', month: '' };
-      ctx.save(); ctx.toast('Din sikkerhedskopi er importeret.');
+    if (ctx.isDemo || ctx.timer?.snapshot?.()) { ctx.toast('Skift til dine egne data og afslut timeren, før sikkerhedskopien importeres.'); return; }
+    let applied = false;
+    ctx.showConfirm('Importér sikkerhedskopi?', `${ctx.needsRecovery ? 'Download først de oprindelige data fra fejlmeddelelsen, før du erstatter dem. ' : ''}Kopien indeholder ${incoming.entries.length} registreringer, ${incoming.jobs.length} job og ${incoming.plans.length} arbejdsplaner. Den erstatter alle nuværende data på denne enhed. Download gerne en sikkerhedskopi først.`, () => {
+      if (ctx.isDemo || ctx.timer?.snapshot?.()) { ctx.toast('Skift til dine egne data og afslut timeren, før sikkerhedskopien importeres.'); return false; }
+      if (!applied) { Object.assign(ctx.state, incoming); ui.work = { query: '', job: '', type: '', month: '' }; applied = true; }
+      return saveChange(ctx, 'Din sikkerhedskopi er importeret.', { restoreBackup: true });
     });
   } catch { ctx.toast('Filen kunne ikke læses. Vælg en gyldig JSON-sikkerhedskopi fra Arbejde.'); }
 }
@@ -314,25 +337,35 @@ function act(ctx, button) {
     const current = action === 'current-month' ? safeDate(todayISO()) : calendarMonth(ctx);
     if (action !== 'current-month') current.setMonth(current.getMonth() + (action === 'prev-month' ? -1 : 1));
     ui.month = isoDate(new Date(current.getFullYear(), current.getMonth(), 1, 12));
-    ctx.render(); return;
+    if (typeof ctx.setCalendarDate === 'function') ctx.setCalendarDate(ui.month); else ctx.render();
+    return;
   }
-  if (action === 'delete-plan') return ctx.showConfirm('Slet arbejdsplan?', 'Planlagte dage fra denne plan fjernes fra kalenderen. Allerede gemte registreringer beholdes.', () => { ctx.state.plans = ctx.state.plans.filter(plan => plan.id !== id); ctx.save(); ctx.toast('Arbejdsplanen er slettet.'); });
+  if (action === 'delete-plan') return ctx.showConfirm('Slet arbejdsplan?', 'Planlagte dage fra denne plan fjernes fra kalenderen. Allerede gemte registreringer beholdes.', () => { ctx.state.plans = ctx.state.plans.filter(plan => plan.id !== id); return saveChange(ctx, 'Arbejdsplanen er slettet.'); });
   if (action === 'delete-entry') {
     const entry = ctx.state.entries.find(item => item.id === id);
-    return ctx.showConfirm('Slet registrering?', `${entry ? dateText(entry.date) : 'Registreringen'} fjernes fra kalender, timer og lønoversigt.`, () => { ctx.state.entries = ctx.state.entries.filter(item => item.id !== id); ctx.save(); ctx.toast('Registreringen er slettet.'); });
+    return ctx.showConfirm('Slet registrering?', `${entry ? dateText(entry.date) : 'Registreringen'} fjernes fra kalender, timer og lønoversigt.`, () => { ctx.state.entries = ctx.state.entries.filter(item => item.id !== id); return saveChange(ctx, 'Registreringen er slettet.'); });
   }
   if (action === 'delete-job') {
     if (ctx.timer?.snapshot?.()?.jobId === id) { ctx.toast('Afslut timerens arbejdsdag, før jobbet slettes.'); return; }
     if (ctx.state.entries.some(entry => entry.jobId === id) || ctx.state.plans.some(plan => plan.jobId === id)) { ctx.toast('Jobbet bruges af registreringer eller arbejdsplaner. Flyt eller slet dem, før jobbet slettes.'); return; }
-    return ctx.showConfirm('Slet job?', `Kontrakten “${jobName(ctx, id)}” fjernes.`, () => { ctx.state.jobs = ctx.state.jobs.filter(job => job.id !== id); if (ctx.state.settings.defaultJobId === id) ctx.state.settings.defaultJobId = ctx.state.jobs[0]?.id || ''; ctx.save(); ctx.toast('Jobbet er slettet.'); });
+    return ctx.showConfirm('Slet job?', `Kontrakten “${jobName(ctx, id)}” fjernes.`, () => { if (ctx.timer?.snapshot?.()?.jobId === id) { ctx.toast('Afslut timerens arbejdsdag, før jobbet slettes.'); return false; } ctx.state.jobs = ctx.state.jobs.filter(job => job.id !== id); if (ctx.state.settings.defaultJobId === id) ctx.state.settings.defaultJobId = ctx.state.jobs[0]?.id || ''; return saveChange(ctx, 'Jobbet er slettet.'); });
   }
   if (action === 'new-list-item') return editListItem(ctx, list);
   if (action === 'edit-list-item') return editListItem(ctx, list, index);
-  if (action === 'delete-list-item' && ['vehicles', 'routes'].includes(list)) return ctx.showConfirm('Fjern fra listen?', `“${ctx.state[list][Number(index)]}” fjernes som valgmulighed. Tidligere registreringer og planer beholdes.`, () => { ctx.state[list].splice(Number(index), 1); ctx.save(); ctx.toast('Valgmuligheden er fjernet.'); });
+  if (action === 'delete-list-item' && ['vehicles', 'routes'].includes(list)) {
+    const value = ctx.state[list][Number(index)];
+    if (value === undefined) return;
+    let removed = false;
+    return ctx.showConfirm('Fjern fra listen?', `“${value}” fjernes som valgmulighed. Tidligere registreringer og planer beholdes.`, () => { if (!removed) { ctx.state[list].splice(Number(index), 1); removed = true; } return saveChange(ctx, 'Valgmuligheden er fjernet.'); });
+  }
   if (action === 'export-csv') return exportCSV(ctx);
   if (action === 'reset-filters') { ui.work = { query: '', job: '', type: '', month: '' }; ctx.render(); return; }
   if (action === 'backup') { download(`arbejde-sikkerhedskopi-${todayISO()}.json`, JSON.stringify(ctx.state, null, 2), 'application/json'); ctx.toast('Sikkerhedskopien er downloadet.'); return; }
-  if (action === 'import') document.querySelector('#backup-file')?.click();
+  if (action === 'import') {
+    if (ctx.isDemo) { ctx.toast('Skift til dine egne data, før du importerer en sikkerhedskopi.'); return; }
+    if (ctx.timer?.snapshot?.()) { ctx.toast('Afslut timerens arbejdsdag, før du importerer en sikkerhedskopi.'); return; }
+    document.querySelector('#backup-file')?.click();
+  }
 }
 
 export function bindPanels(ctx) {
@@ -351,7 +384,7 @@ export function bindPanels(ctx) {
     const checked = validateState({ ...ctx.state, settings });
     if (!checked.ok) { ctx.toast(checked.errors[0] || 'Kontrollér dine indstillinger.'); return; }
     ctx.state.settings = checked.state.settings;
-    ctx.save(); ctx.toast('Dine indstillinger er gemt.');
+    saveChange(ctx, 'Dine indstillinger er gemt.');
   });
   document.querySelector('#backup-file')?.addEventListener('change', event => { importBackup(ctx, event.target.files?.[0]); event.target.value = ''; });
 }

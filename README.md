@@ -1,8 +1,14 @@
-# Arbejde · Tid & Løn — v3.0.0
+# Arbejde · Tid & Løn — v3.0.1
 
 Personlig dansk app til arbejdstid, renovationsture, akkord, løn og fravær. Version 3 tilføjer lokal PDF-import af arbejdsplaner og en daglig timer. Det orange/grafit-design bruger de leverede logoer og 3D-ikoner samt en lokalt leveret Inter-skrifttype.
 
 Appen gemmer data i din browserprofil. Der er ingen cloudkonto eller automatisk synkronisering. Kom hurtigt i gang med [START-HER.md](START-HER.md).
+
+## Rettelser i 3.0.1
+
+Gennemgang af registrering, kalender, import, job, register, statistik, timer og backup. Gemmeknapper viser ikke længere succes ved lagerfejl, og genforsøg opretter ikke dubletter. Enkeltdagsplaner og sygedagens arbejdsuge bevares ved redigering. Lønkortet bruger det viste jobs lønperiode. Formularer beskytter mod ændringer i andre faner, og demovisning bevarer nye oplysninger fra den rigtige visning.
+
+Hvis gemte data ikke kan læses, bliver de oprindelige data ikke overskrevet. Brug **Download oprindelige data** i beskeden, og gendan derefter en gyldig JSON-sikkerhedskopi efter bekræftelse. En aktiv timer skal afsluttes før gendannelse.
 
 ## Fra arbejdsplan til arbejdsdag
 
@@ -98,6 +104,7 @@ Løn er estimeret brutto før skat og øvrige fradrag. Ukendte satser starter p�
 | `domain.js`, `directory-domain.js`, `directory-ui.js` | Beregninger og lokalt register |
 | `pdf-reader.js`, `assets/pdfjs/` | Lokal PDF.js-læser med worker, tegnkort, fontdata og licenser |
 | `schedule-parser.js`, `schedule-domain.js`, `schedule-import-ui.js` | Genkendelse, kontrol og import af PDF-planer |
+| `data-store.js` | Beskyttet lagring, gendannelse og kontrol af ændringer fra andre faner |
 | `timer-domain.js`, `timer-controller.js` | Daglig timer med separat lokal lagring |
 | `manifest.webmanifest`, `sw.js` | Installation og offlinefiler |
 | `serve.mjs`, `check.mjs`, `*.test.js` | Lokal server, syntakskontrol og tests |

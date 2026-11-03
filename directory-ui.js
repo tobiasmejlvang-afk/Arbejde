@@ -2,6 +2,7 @@ import { uid, todayISO } from './domain.js';
 import { emptyDirectory, validateDirectory, mergeDirectoryState } from './directory-domain.js';
 
 const ui = { tab: 'vehicles', query: '', verifyOnly: false };
+let importSequence = 0;
 const escape = (ctx, value) => ctx.escape(String(value ?? ''));
 const selected = value => value ? ' checked' : '';
 const icon = (name, size = 48, className = 'panel-icon') => `<img class="${className}" src="assets/brand/${name}.png" alt="" width="${size}" height="${size}" decoding="async">`;
@@ -97,7 +98,7 @@ export function renderDirectory(ctx) {
   if (!directory) return `${heading}${input}<section class="card directory-empty empty-state">${icon('vehicle', 112, 'empty-art')}<h2>Dit register starter med din kopi</h2><p>Importér den private JSON-kopi for at samle vogne og kollegaer her. Registeret gemmes lokalt sammen med resten af dine data.</p><div class="directory-card-actions"><button class="button primary" type="button" data-directory-action="import">Importér privat register</button><button class="button secondary" type="button" data-directory-action="add-vehicle">Tilføj vogn manuelt</button><button class="button subtle" type="button" data-directory-action="add-person">Tilføj kollega</button></div><p class="muted directory-source-note">Vælg en fil med typen arbejde-directory. Der sendes ingen oplysninger til en server.</p></section>`;
   const tabs = [['vehicles', 'Vogne', directory.vehicles.length], ['people', 'Kollegaer', directory.people.length], ['issues', 'Kontrolpunkter', directory.issues.length]];
   return `${heading}${input}<section class="card directory-source"><div class="panel-title-group">${icon('job', 40)}<div><span class="surface-label">${escape(ctx, directory.name || 'ARBEJDSREGISTER')}</span><h2>${escape(ctx, [directory.company, directory.department].filter(Boolean).join(' · ') || 'Dit lokale register')}</h2><div class="directory-source-meta">${sourceReference(ctx, directory, 0)}${directory.source?.referenceDate ? `<span>Reference: ${escape(ctx, directory.source.referenceDate)}</span>` : ''}</div></div></div><div class="directory-card-actions"><button class="button subtle" type="button" data-directory-action="add-person">+ Tilføj kollega</button><button class="button secondary" type="button" data-directory-action="export">Download register</button></div></section>
-    <div class="directory-toolbar"><div class="directory-tabs" role="tablist" aria-label="Vis register">${tabs.map(([key, label, count]) => `<button id="directory-tab-${key}" type="button" role="tab" aria-selected="${ui.tab === key}" aria-controls="directory-content" class="${ui.tab === key ? 'active' : ''}" data-directory-action="tab" data-tab="${key}">${label}<span class="directory-tab-count">${count}</span></button>`).join('')}</div><div class="directory-search"><label class="sr-only" for="directory-search">Søg i registeret</label><input id="directory-search" type="search" maxlength="160" data-directory-search placeholder="Søg efter vogn, navn eller telefon…" value="${escape(ctx, ui.query)}"></div>${ui.tab !== 'people' ? `<label class="directory-filter-toggle"><input type="checkbox" data-directory-verify${selected(ui.verifyOnly)}><span>Kun til kontrol</span></label>` : ''}</div><section id="directory-content" class="directory-content" role="tabpanel" aria-labelledby="directory-tab-${ui.tab}" tabindex="0">${renderContent(ctx, directory)}</section>`;
+    <div class="directory-toolbar"><div class="directory-tabs" role="tablist" aria-label="Vis register">${tabs.map(([key, label, count]) => `<button id="directory-tab-${key}" type="button" role="tab" aria-selected="${ui.tab === key}" tabindex="${ui.tab === key ? '0' : '-1'}" aria-controls="directory-content" class="${ui.tab === key ? 'active' : ''}" data-directory-action="tab" data-tab="${key}">${label}<span class="directory-tab-count">${count}</span></button>`).join('')}</div><div class="directory-search"><label class="sr-only" for="directory-search">Søg i registeret</label><input id="directory-search" type="search" maxlength="160" data-directory-search placeholder="Søg efter vogn, navn eller telefon…" value="${escape(ctx, ui.query)}"></div>${ui.tab !== 'people' ? `<label class="directory-filter-toggle"><input type="checkbox" data-directory-verify${selected(ui.verifyOnly)}><span>Kun til kontrol</span></label>` : ''}</div><section id="directory-content" class="directory-content" role="tabpanel" aria-labelledby="directory-tab-${ui.tab}" tabindex="0">${renderContent(ctx, directory)}</section>`;
 }
 
 function infoModal(ctx, title, html) {
@@ -126,16 +127,31 @@ function showPerson(ctx, id) {
   infoModal(ctx, person.name, `<div class="directory-details"><div class="directory-role-list">${person.roles.map(role => `<span class="badge">${escape(ctx, role)}</span>`).join('')}</div><dl class="directory-detail-grid"><div><dt>Telefon</dt><dd>${phoneLink(ctx, person)}</dd></div><div><dt>Lokalnummer</dt><dd>${escape(ctx, person.extension || 'Ikke angivet')}</dd></div></dl><section class="directory-form-section"><h3>Tilknyttede vogne</h3><div class="directory-driver-list">${personVehicles(directory, id).map(vehicle => `<button class="directory-person-chip" type="button" data-directory-action="vehicle-details" data-id="${escape(ctx, vehicle.id)}">Vogn ${escape(ctx, vehicle.number)}</button>`).join('') || '<p class="muted">Ingen vogn tilknyttet.</p>'}</div></section>${person.notes ? `<section class="directory-form-section"><h3>Noter</h3><p class="directory-source-note">${escape(ctx, person.notes)}</p></section>` : ''}<div class="directory-source-meta">${person.sourcePages.map(page => sourceReference(ctx, directory, page)).join('') || '<span class="directory-source-note">Tilføjet manuelt</span>'}</div><div class="directory-card-actions"><button class="button secondary" type="button" data-directory-action="edit-person" data-id="${escape(ctx, id)}">Ret kollega</button></div></div>`);
 }
 
-function persist(ctx, directory, message) {
+function persist(ctx, directory, message, resetView = false) {
   const checked = validateDirectory(directory);
   if (!checked.ok) { ctx.toast(checked.errors.slice(0, 2).join(' ') || 'Kontrollér registerets oplysninger.'); return false; }
+  const previous = {directory: ctx.state.directory, vehicles: ctx.state.vehicles};
+  const previousUI = {...ui};
   try {
     Object.assign(ctx.state, mergeDirectoryState(ctx.state, checked.directory));
+    if (resetView) Object.assign(ui, {query: '', verifyOnly: false, tab: 'vehicles'});
+    if (ctx.save() === false) {
+      Object.assign(ctx.state, previous);
+      Object.assign(ui, previousUI);
+      ctx.render();
+      ctx.toast('Registeret blev ikke gemt. Oplysningerne i dialogen er bevaret, så du kan prøve igen.');
+      return false;
+    }
     ctx.closeModal();
-    ctx.save();
     ctx.toast(message);
     return true;
-  } catch (error) { ctx.toast(error.message || 'Registeret kunne ikke gemmes.'); return false; }
+  } catch (error) {
+    Object.assign(ctx.state, previous);
+    Object.assign(ui, previousUI);
+    ctx.render();
+    ctx.toast(error.message || 'Registeret kunne ikke gemmes.');
+    return false;
+  }
 }
 
 function editVehicle(ctx, id) {
@@ -177,30 +193,34 @@ function exportDirectory(ctx) {
   const result = validateDirectory(directory);
   if (!result.ok) { ctx.toast('Registeret skal kontrolleres, før det kan eksporteres.'); return; }
   const data = { kind: 'arbejde-directory', version: 1, directory: result.directory };
-  const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `arbejde-privat-register-${todayISO()}.json`;
-  link.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-  ctx.toast('Den private kopi af registeret er downloadet.');
+  let url, link;
+  try {
+    url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
+    link = document.createElement('a');
+    link.href = url;
+    link.download = `arbejde-privat-register-${todayISO()}.json`;
+    document.body.appendChild(link);
+    link.click();
+    ctx.toast('Download af den private registerkopi er startet.');
+  } catch { ctx.toast('Download kunne ikke startes. Prøv igen i browseren.'); }
+  finally { link?.remove(); if (url) setTimeout(() => URL.revokeObjectURL(url), 1000); }
 }
 
 async function importDirectory(ctx, file) {
   if (!file) return;
+  const sequence = ++importSequence;
+  const input = document.querySelector('#directory-file');
   if (file.size > 10 * 1024 * 1024) { ctx.toast('Vælg en JSON-kopi under 10 MB.'); return; }
   try {
     const data = JSON.parse(await file.text());
-    if (data.kind !== 'arbejde-directory' || data.version !== 1 || !data.directory) { ctx.toast('Vælg en privat kopi med typen arbejde-directory og version 1.'); return; }
+    if (sequence !== importSequence || input?.isConnected === false) return;
+    if (!data || data.kind !== 'arbejde-directory' || data.version !== 1 || !data.directory) { ctx.toast('Vælg en privat kopi med typen arbejde-directory og version 1.'); return; }
     const result = validateDirectory(data.directory);
     if (!result.ok) { ctx.toast(result.errors.slice(0, 2).join(' ') || 'Registerfilen har et ugyldigt format.'); return; }
     const directory = result.directory;
     const description = `Kopien indeholder ${directory.vehicles.length} vogne, ${directory.people.length} kollegaer og ${directory.issues.length} kildepunkter.${currentDirectory(ctx) ? ' Den erstatter det nuværende register. Gem eventuelt en kopi først.' : ' Oplysningerne gemmes lokalt på denne enhed.'} Dine arbejdsregistreringer beholdes.`;
-    ctx.showConfirm('Importér privat register?', description, () => {
-      ui.query = ''; ui.verifyOnly = false; ui.tab = 'vehicles';
-      persist(ctx, directory, 'Det private register er importeret.');
-    });
-  } catch { ctx.toast('Filen kunne ikke læses. Vælg en gyldig JSON-kopi af det private register.'); }
+    ctx.showConfirm('Importér privat register?', description, () => persist(ctx, directory, 'Det private register er importeret.', true));
+  } catch { if (sequence === importSequence && input?.isConnected !== false) ctx.toast('Filen kunne ikke læses. Vælg en gyldig JSON-kopi af det private register.'); }
 }
 
 function registerVehicleWork(ctx, id) {
@@ -212,7 +232,7 @@ function registerVehicleWork(ctx, id) {
 
 function act(ctx, button) {
   const { directoryAction: action, id, tab } = button.dataset;
-  if (action === 'tab' && ['vehicles', 'people', 'issues'].includes(tab)) { ui.tab = tab; ctx.render(); return; }
+  if (action === 'tab' && ['vehicles', 'people', 'issues'].includes(tab)) { ui.tab = tab; ctx.render(); document.querySelector(`#directory-tab-${tab}`)?.focus(); return; }
   if (action === 'import') { document.querySelector('#directory-file')?.click(); return; }
   if (action === 'export') return exportDirectory(ctx);
   if (action === 'vehicle-details') return showVehicle(ctx, id);
@@ -225,7 +245,15 @@ function act(ctx, button) {
 }
 
 function bindActions(ctx, scope) {
-  scope.querySelectorAll('[data-directory-action]').forEach(button => button.addEventListener('click', () => act(ctx, button)));
+  scope.querySelectorAll('[data-directory-action]').forEach(button => {
+    button.onclick = () => act(ctx, button);
+    if (button.dataset.directoryAction === 'tab') button.onkeydown = event => {
+      const tabs = ['vehicles', 'people', 'issues'];
+      const index = tabs.indexOf(button.dataset.tab);
+      const next = event.key === 'ArrowRight' ? tabs[(index + 1) % tabs.length] : event.key === 'ArrowLeft' ? tabs[(index + tabs.length - 1) % tabs.length] : event.key === 'Home' ? tabs[0] : event.key === 'End' ? tabs.at(-1) : null;
+      if (next && !event.altKey && !event.ctrlKey && !event.metaKey) { event.preventDefault(); act(ctx, {dataset: {directoryAction: 'tab', tab: next}}); }
+    };
+  });
 }
 
 export function bindDirectory(ctx) {
@@ -236,7 +264,8 @@ export function bindDirectory(ctx) {
     content.innerHTML = renderContent(ctx, directory);
     bindActions(ctx, content);
   };
-  document.querySelector('[data-directory-search]')?.addEventListener('input', event => { ui.query = event.target.value; refreshResults(); });
-  document.querySelector('[data-directory-verify]')?.addEventListener('change', event => { ui.verifyOnly = event.target.checked; refreshResults(); });
-  document.querySelector('#directory-file')?.addEventListener('change', event => { const file = event.target.files?.[0]; event.target.value = ''; importDirectory(ctx, file); });
+  const search = document.querySelector('[data-directory-search]'), verify = document.querySelector('[data-directory-verify]'), input = document.querySelector('#directory-file');
+  if (search) search.oninput = event => { ui.query = event.target.value; refreshResults(); };
+  if (verify) verify.onchange = event => { ui.verifyOnly = event.target.checked; refreshResults(); };
+  if (input) input.onchange = event => { const file = event.target.files?.[0]; event.target.value = ''; return importDirectory(ctx, file); };
 }

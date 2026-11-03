@@ -26,3 +26,38 @@ test('malformed persisted timers are never silently overwritten',()=>{
   const {data}=storage();data.set(key,'{broken');const a=createTimerController();assert.equal(a.snapshot(),null);
   assert.throws(()=>a.start({jobId:'j'}),/kunne ikke læses/);assert.equal(data.get(key),'{broken');
 });
+test('a timer changed between refresh and write is not overwritten or reconciled away',()=>{
+  const {data}=storage(),a=createTimerController();a.start({id:'old',jobId:'j'});
+  const originalGet=globalThis.localStorage.getItem,next=JSON.stringify(startTimer({id:'new',jobId:'j'}));
+  let reads=0;
+  globalThis.localStorage.getItem=k=>{if(++reads===2)data.set(key,next);return originalGet(k);};
+  assert.throws(()=>a.pause(),/anden fane/);assert.equal(data.get(key),next);
+  assert.equal(a.snapshot().id,'new');
+  globalThis.localStorage.getItem=originalGet;
+  const b=createTimerController();data.set(key,JSON.stringify(startTimer({id:'another',jobId:'j'})));
+  reads=0;globalThis.localStorage.getItem=k=>{if(++reads===2)data.set(key,next);return originalGet(k);};
+  b.reconcile([{timerId:'another'}]);assert.equal(data.get(key),next);
+  globalThis.localStorage.getItem=originalGet;
+});
+test('storage clear events refresh the timer and disposed controllers stop listening',()=>{
+  const previousWindow=globalThis.window,listeners=new Set();
+  globalThis.window={addEventListener:(name,fn)=>listeners.add(fn),removeEventListener:(name,fn)=>listeners.delete(fn)};
+  try{
+    const {data}=storage(),a=createTimerController();a.start({id:'event',jobId:'j'});
+    data.clear();for(const listener of listeners)listener({key:null});
+    assert.equal(a.snapshot(),null);a.dispose();assert.equal(listeners.size,0);
+  }finally{globalThis.window=previousWindow;}
+});
+test('dirty memory cannot overwrite storage while reads fail, and recovers after reads resume',()=>{
+  const {data,setFail}=storage(),a=createTimerController();setFail(true);a.start({id:'memory-read',jobId:'j'});
+  const originalGet=globalThis.localStorage.getItem;globalThis.localStorage.getItem=()=>{throw Error('blocked');};
+  assert.throws(()=>a.pause(),/kunne ikke læses/);assert.equal(a.snapshot().status,'running');assert.equal(data.size,0);
+  globalThis.localStorage.getItem=originalGet;setFail(false);
+  a.pause();assert.equal(a.snapshot().status,'paused');assert.equal(JSON.parse(data.get(key)).status,'paused');
+});
+test('returned timers are copies and a controller without an observed timer cannot clear a new one',()=>{
+  const {data}=storage(),a=createTimerController();
+  const created=a.start({id:'copy',jobId:'j'});created.status='stopped';assert.equal(a.snapshot().status,'running');
+  a.clear('copy');data.set(key,JSON.stringify(startTimer({id:'new-unseen',jobId:'j'})));
+  a.clear();assert.equal(JSON.parse(data.get(key)).id,'new-unseen');
+});

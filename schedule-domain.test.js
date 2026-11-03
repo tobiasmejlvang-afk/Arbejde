@@ -140,3 +140,25 @@ test('a batch-only alternative can be chosen alone while simultaneous alternativ
   assert.equal(blocked.items[1].batchConflictOnly, false);
   assert.throws(() => applyScheduleImport(state, blocked, ['alternative-example']));
 });
+test('crew order does not create duplicate imports and comma-separated colleagues remain resources', () => {
+  const {state, options} = setup();
+  const first = candidate({people: ['Maria', 'Ole', 'Lise']});
+  const imported = importAll(state, prepareScheduleImport(state, [first], options)).state;
+  const reordered = candidate({id: 'reordered-example', people: ['Maria', 'Lise', 'Ole']});
+  assert.equal(prepareScheduleImport(imported, [reordered], options).items[0].status, 'duplicate');
+  state.entries = [entry(state, {date: '2028-03-06', driver: 'Other', colleague: 'Maria, Ole', vehicle: 'OTHER'})];
+  const preview = prepareScheduleImport(state, [candidate()], options);
+  assert.equal(preview.items[0].status, 'conflict'); assert.equal(preview.items[0].canReplace, false);
+});
+test('replacing a single imported date never removes an entire recurring PDF plan', () => {
+  const {state, options} = setup();
+  const dated = importAll(state, prepareScheduleImport(state, [candidate()], options)).state.plans[0];
+  const recurring = {...dated, id: 'recurring-pdf-example', from: '2028-03-01', to: '2028-03-31', weekdays: [1]};
+  delete recurring.date;
+  state.plans = [recurring];
+  const before = JSON.stringify(state);
+  const preview = prepareScheduleImport(state, [candidate({start: '08:00', end: '16:00'})], options);
+  assert.equal(preview.items[0].status, 'conflict'); assert.equal(preview.items[0].canReplace, false);
+  assert.throws(() => importAll(state, preview, {replaceImported: true}));
+  assert.equal(JSON.stringify(state), before);
+});
