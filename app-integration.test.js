@@ -56,7 +56,7 @@ function harness() {
   const dataStore = createDataStore(storage); dataStore.load();
   const sandbox = {
     state, realState: null, demoMode: false, dataEpoch: 0, storageProblem: '', dataStore,
-    editor, FormData: FormDataStub, emptyState, demoState,
+    editor, modalCleanup: undefined, FormData: FormDataStub, emptyState, demoState,
     escape: String, icon: () => '', toast: value => toasts.push(value), render: () => rendered++,
     uid: () => 'synthetic-entry', timer: {reconcile: entries => reconciled.push(entries)},
     calcs: [], view: 'overblik', calendarDate: '2028-03-06', periodMode: 'month', periodDate: '2028-03-06', jobFilter: '', menuOpen: true,

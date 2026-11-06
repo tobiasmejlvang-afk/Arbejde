@@ -1,8 +1,16 @@
-# Arbejde · Tid & Løn — v3.0.1
+# Arbejde · Tid & Løn — v3.1.0
 
 Personlig dansk app til arbejdstid, renovationsture, akkord, løn og fravær. Version 3 tilføjer lokal PDF-import af arbejdsplaner og en daglig timer. Det orange/grafit-design bruger de leverede logoer og 3D-ikoner samt en lokalt leveret Inter-skrifttype.
 
-Appen gemmer data i din browserprofil. Der er ingen cloudkonto eller automatisk synkronisering. Kom hurtigt i gang med [START-HER.md](START-HER.md).
+Appen gemmer data i browserprofilen. Med en konto under **Indstillinger → Login og synkronisering** synkroniseres gemte data og billeder mellem dine enheder. Kom hurtigt i gang med [START-HER.md](START-HER.md).
+
+## Version 3.1
+
+Registreringen har synlige affaldsfelter, noter, billedvedhæftninger og et valg for fuldt overarbejde på den ugentlige fridag. Under **Ture** kan du gemme en fast rute til en ugedag i lige, ulige eller alle uger. Vælg ruten i en arbejdsregistrering for at udfylde vogn, affald og tømninger.
+
+Opret en konto eller log ind med samme e-mail på dine enheder. Første gang kan du vælge **Kopiér lokale data til kontoen** under Indstillinger. Timeren kører på den enhed, hvor du starter den, og arbejdsdagen synkroniseres efter gemning. Ved samtidige ændringer i begge kopier vælger du, hvilken version der skal beholdes.
+
+Se [Supabase-opsætning](supabase/README.md) ved brug af dit eget projekt. JSON-kopier indeholder registreringer og billedhenvisninger. Billedfiler gemmes lokalt og på kontoen efter synkronisering.
 
 ## Rettelser i 3.0.1
 

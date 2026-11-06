@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {defaultJob, emptyState, demoState, calculateAll, summarize, validateEntry, validateState, weekStart, addDays, monthRange, payPeriod} from './domain.js';
+import {defaultJob, defaultPreferences, emptyState, demoState, calculateAll, summarize, validateEntry, validateState, weekStart, addDays, monthRange, payPeriod} from './domain.js';
 
 function fixture(scheme = '3') {
   const job = defaultJob({id: 'job', scheme, hourlyRate: 200, overtimeRate: 300, pensionEmployee: 2, pensionEmployer: 10, choicePercent: 9, holidayPercent: 12.5});
@@ -24,6 +24,49 @@ test('four-day accord pays 9.25-hour norm and treats a fifth day as overtime', (
   state.entries = [19, 20, 21, 22, 23].map(day => work(`2026-10-${day}`, {scheme: '4', end: '13:00'}));
   const rows = calculateAll(state);
   assert.equal(rows[0].baseHours, 9.25); assert.equal(rows[4].overtimeHours, 8);
+});
+test('three-day accord pays rest-day work entirely as overtime without using a normal day slot', () => {
+  const state = fixture();
+  state.entries = [19, 20, 21, 22, 23].map(day => work(`2026-10-${day}`, {restDay: day === 19}));
+  state.entries[0].extras = [{id: 'rest-extra', kind: 'task', task: 'Vask', minutes: 60, paidOvertime: true}];
+  const rows = calculateAll(state);
+  const [rest, first, , third, fourth] = rows;
+  assert.equal(rest.actualHours, 10); assert.equal(rest.overtimeHours, 10);
+  assert.equal(rest.baseHours, 0); assert.equal(rest.guaranteeHours, 0); assert.equal(rest.paidHours, 10); assert.equal(rest.grossPay, 3000);
+  assert.equal(rest.dayIndex, null); assert.equal(rest.nominalHours, 0);
+  assert.equal(first.dayIndex, 1); near(third.baseHours, 12.33); assert.equal(fourth.dayIndex, 4); assert.equal(fourth.overtimeHours, 10);
+  assert.equal(summarize(rows).workDays, 5);
+});
+test('split shifts on a rest day get no four-day guarantee and later normal days keep all four slots', () => {
+  const state = fixture('4');
+  state.entries = [work('2026-10-19', {id: 'rest-early', scheme: '4', restDay: true, end: '09:00'}), work('2026-10-19', {id: 'rest-late', scheme: '4', restDay: true, start: '10:00', end: '14:00'}), ...[20, 21, 22, 23, 24].map(day => work(`2026-10-${day}`, {scheme: '4', end: '13:00'}))];
+  assert.equal(validateState(state).ok, true);
+  const rows = calculateAll(state);
+  assert.equal(summarize(rows.slice(0, 2)).overtimeHours, 8);
+  assert.equal(summarize(rows.slice(0, 2)).baseHours, 0);
+  assert.deepEqual(rows.slice(2, 6).map(row => row.dayIndex), [1, 2, 3, 4]);
+  assert.ok(rows.slice(2, 6).every(row => row.baseHours === 9.25));
+  assert.equal(rows[6].overtimeHours, 8);
+});
+test('a marked weekday in the five-day schedule is fully overtime after the unpaid break', () => {
+  const state = fixture('5');
+  state.entries = [work('2026-10-23', {scheme: '5', restDay: true, end: '13:00', breakMinutes: 30})];
+  const row = calculateAll(state)[0];
+  assert.equal(row.actualHours, 7.5); assert.equal(row.overtimeHours, 7.5);
+  assert.equal(row.baseHours, 0); assert.equal(row.guaranteeHours, 0); assert.equal(row.grossPay, 2250);
+  state.jobs[0].overtimeRate = 0;
+  assert.deepEqual(calculateAll(state)[0].missingRates, ['overtimeRate']);
+});
+test('legacy shifts default to ordinary days and split shifts require consistent boolean rest-day flags', () => {
+  const state = fixture();
+  const first = work('2026-10-19', {id: 'first', end: '09:00'});
+  state.entries = [first];
+  const late = work('2026-10-19', {id: 'late', start: '10:00', end: '14:00', restDay: false});
+  assert.deepEqual(validateEntry(late, state), []);
+  assert.equal(validateState({...state, entries: [first, late]}).ok, true);
+  assert.ok(validateEntry({...late, restDay: true}, state).some(error => error.includes('samme hviledagsmarkering')));
+  assert.equal(validateState({...state, entries: [first, {...late, restDay: true}]}).ok, false);
+  assert.equal(validateState({...state, entries: [{...first, restDay: 'false'}]}).ok, false);
 });
 test('weekly classification is computed before dashboard filtering', () => {
   const state = fixture();
@@ -142,5 +185,53 @@ test('malformed JSON text fields return validation errors without invoking objec
     const candidate = work('2026-10-19', patch);
     assert.ok(validateEntry(candidate, state).length > 0);
     assert.equal(validateState({...state, entries: [candidate]}).ok, false);
+  }
+});
+test('legacy backups without route templates and preferences remain valid without filling fields', () => {
+  const legacy = emptyState(); delete legacy.routeTemplates; delete legacy.settings.preferences;
+  const restored = validateState(JSON.parse(JSON.stringify(legacy)));
+  assert.equal(restored.ok, true); assert.deepEqual(restored.state, legacy);
+  const defaults = defaultPreferences(); defaults.compact = true;
+  assert.equal(defaultPreferences().compact, false);
+});
+test('route templates and preferences round-trip with an overnight default shift', () => {
+  const state = emptyState();
+  state.routeTemplates = [{id: 'example-route', name: 'Eksempelrute', weekParity: 'odd', weekday: 1, waste: ['Mad', 'Rest'], empties: 40}];
+  state.settings.preferences = {...defaultPreferences(), compact: true, reduceMotion: true, defaultStart: '22:00', defaultEnd: '06:00', defaultBreakMinutes: 30, defaultRouteId: 'example-route'};
+  const result = validateState(JSON.parse(JSON.stringify(state)));
+  assert.equal(result.ok, true); assert.deepEqual(result.state, state);
+  assert.equal(validateState({...state, routeTemplates: []}).ok, false);
+});
+test('route templates reject invalid weekdays, duplicate ids, waste and quantities', () => {
+  const state = emptyState(), route = {id: 'example-route', name: 'Eksempelrute', weekParity: 'all', weekday: 7, vehicle: '', waste: [], empties: 100000};
+  assert.equal(validateState({...state, routeTemplates: [route]}).ok, true);
+  assert.equal(validateState({...state, routeTemplates: [route, {...route}]}).ok, false);
+  for (const changes of [{weekParity: 'alternating'}, {weekday: 0}, {name: ' '}, {waste: ['Rest', 'Rest']}, {waste: ['Ukendt']}, {empties: -1}, {empties: 100001}, {unexpected: true}]) assert.equal(validateState({...state, routeTemplates: [{...route, ...changes}]}).ok, false);
+});
+test('preferences reject incomplete shift times, impossible pauses and unknown keys', () => {
+  const state = emptyState();
+  for (const changes of [{defaultEnd: ''}, {defaultStart: '06:00', defaultEnd: '06:00'}, {defaultStart: '22:00', defaultEnd: '06:00', defaultBreakMinutes: 480}, {defaultBreakMinutes: 1.5}, {defaultBreakMinutes: 1440}, {defaultRouteId: 'missing-route'}, {reduceMotion: 'false'}, {unknown: true}]) {
+    const settings = {...state.settings, preferences: {...defaultPreferences(), ...changes}};
+    assert.equal(validateState({...state, settings}).ok, false);
+  }
+});
+test('photo metadata is portable in state backups for work and absence without changing payroll', () => {
+  const state = fixture();
+  const photo = {id: 'a'.repeat(32), name: 'eksempel.jpg', mime: 'image/jpeg', size: 5242880};
+  const second = {id: '12345678-1234-4123-8123-123456789abc', name: 'eksempel.webp', mime: 'image/webp', size: 1};
+  state.entries = [work('2026-10-19', {photos: [photo]}), work('2026-10-20', {type: 'off', photos: [second]})];
+  const result = validateState(JSON.parse(JSON.stringify(state)));
+  assert.equal(result.ok, true); assert.deepEqual(result.state.entries, state.entries);
+  const withoutPhotos = {...state, entries: state.entries.map(({photos, ...entry}) => entry)};
+  assert.deepEqual(summarize(calculateAll(result.state)), summarize(calculateAll(withoutPhotos)));
+});
+test('photo validation rejects excess, duplicate or embedded image records before saving', () => {
+  const state = fixture();
+  const photo = {id: 'b'.repeat(32), name: 'eksempel.png', mime: 'image/png', size: 512};
+  const tooMany = Array.from({length: 7}, (_, index) => ({...photo, id: String(index).repeat(32)}));
+  for (const photos of [[photo, photo], tooMany, [{...photo, data: 'encoded-image'}], [{...photo, id: 'bad-id'}], [{...photo, name: 'x'.repeat(151)}], [{...photo, mime: 'image/svg+xml'}], [{...photo, size: 0}], [{...photo, size: 5242881}]]) {
+    const entry = work('2026-10-19', {photos});
+    assert.ok(validateEntry(entry, state).length > 0);
+    assert.equal(validateState({...state, entries: [entry]}).ok, false);
   }
 });

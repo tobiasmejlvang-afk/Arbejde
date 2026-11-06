@@ -1,0 +1,7 @@
+.entry-photo-group { min-inline-size: 0; margin: 0; padding: 12px; border: 1px solid var(--border); border-radius: 10px; }
+.entry-photo-group legend { padding-inline: 5px; font-weight: 600; }
+.entry-photo-group input[type=file] { min-width: 0; max-width: 100%; }
+.entry-photo-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr)); gap: 10px; }
+.entry-photo-card { display: grid; align-content: start; gap: 7px; padding: 8px; border: 1px solid var(--border); border-radius: 9px; overflow-wrap: anywhere; }
+.entry-photo-card img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 6px; }
+.entry-photo-card .button { min-height: 36px; }

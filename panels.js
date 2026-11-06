@@ -1,7 +1,8 @@
-import { defaultJob, uid, todayISO, addDays, payPeriod, money, hours, validateState } from './domain.js';
+import { defaultJob, defaultPreferences, uid, todayISO, addDays, payPeriod, money, hours, validateState, WASTE_TYPES } from './domain.js';
 
 const typeLabels = { work: 'Arbejdsdag', sick: 'Sygdom', off: 'Fridag', holiday: 'Ferie', freeHoliday: 'Feriefridag', absence: 'Fravær' };
 const weekdays = ['Mandag', 'Tirsdag', 'Onsdag', 'Torsdag', 'Fredag', 'Lørdag', 'Søndag'];
+const routeParities = { all: 'Alle uger', even: 'Lige uger', odd: 'Ulige uger' };
 const ui = { month: null, calendarSource: null, work: { query: '', job: '', type: '', month: '' } };
 const safeDate = value => new Date(`${String(value).slice(0, 10)}T12:00:00`);
 const isoDate = date => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -21,8 +22,8 @@ function pageHeading(icon, label, title, description, actions = '') {
 }
 
 function field(ctx, label, name, value = '', options = {}) {
-  const { type = 'text', required = false, min, max, step, maxLength, hint, full = false, placeholder = '' } = options;
-  return `<label class="field${full ? ' full' : ''}"><span>${label}</span><input name="${name}" type="${type}" value="${attr(ctx, value)}"${required ? ' required' : ''}${min !== undefined ? ` min="${min}"` : ''}${max !== undefined ? ` max="${max}"` : ''}${step !== undefined ? ` step="${step}"` : ''}${maxLength !== undefined ? ` maxlength="${maxLength}"` : ''}${placeholder ? ` placeholder="${attr(ctx, placeholder)}"` : ''}>${hint ? `<small class="field-hint muted">${hint}</small>` : ''}</label>`;
+  const { type = 'text', required = false, min, max, step, maxLength, hint, full = false, placeholder = '', list } = options;
+  return `<label class="field${full ? ' full' : ''}"><span>${label}</span><input name="${name}" type="${type}" value="${attr(ctx, value)}"${required ? ' required' : ''}${min !== undefined ? ` min="${min}"` : ''}${max !== undefined ? ` max="${max}"` : ''}${step !== undefined ? ` step="${step}"` : ''}${maxLength !== undefined ? ` maxlength="${maxLength}"` : ''}${placeholder ? ` placeholder="${attr(ctx, placeholder)}"` : ''}${list ? ` list="${attr(ctx, list)}"` : ''}>${hint ? `<small class="field-hint muted">${hint}</small>` : ''}</label>`;
 }
 
 function selectField(ctx, label, name, value, options, full = false) {
@@ -173,14 +174,59 @@ function settingsDefaults(ctx) {
   return `<label class="field"><span>Din standardchauffør · valgfrit</span><input name="defaultDriver" list="settings-driver-options" value="${attr(ctx, ctx.state.settings.defaultDriver || '')}" maxlength="200" placeholder="Vælg eller skriv dit navn"></label><label class="field"><span>Din standardvogn · valgfrit</span><input name="defaultVehicle" list="settings-vehicle-options" value="${attr(ctx, ctx.state.settings.defaultVehicle || '')}" maxlength="100" placeholder="Vælg eller skriv vognnummer"></label><datalist id="settings-driver-options">${names.map(name => `<option value="${attr(ctx, name)}"></option>`).join('')}</datalist><datalist id="settings-vehicle-options">${vehicles.map(vehicle => `<option value="${attr(ctx, vehicle)}"></option>`).join('')}</datalist><p class="field-hint full settings-default-hint">Dine standardvalg gør det lettere at finde din egen plan og registrere dagens arbejde. Du kan ændre dem på hver arbejdsdag.</p>`;
 }
 
+function routeScheduleLabel(route) {
+  return `${weekdays[route.weekday - 1]} · ${routeParities[route.weekParity]}`;
+}
+
+function renderRouteTemplates(ctx) {
+  const routes = [...(ctx.state.routeTemplates || [])].sort((a, b) => a.weekday - b.weekday || a.name.localeCompare(b.name, 'da-DK'));
+  const defaultRouteId = ctx.state.settings.preferences?.defaultRouteId;
+  const list = routes.map(route => {
+    const label = attr(ctx, route.name);
+    const id = attr(ctx, route.id);
+    const details = [routeScheduleLabel(route), route.vehicle, `${route.empties.toLocaleString('da-DK')} tømninger`, route.waste.join(', ')].filter(Boolean);
+    return `<li><div class="route-template-copy"><strong>${label}</strong>${route.id === defaultRouteId ? ' <span class="badge">Standard</span>' : ''}<p class="muted small">${attr(ctx, details.join(' · '))}</p></div><div class="row-actions"><button type="button" class="button subtle" data-panel-action="edit-route-template" data-id="${id}" aria-label="Ret rute ${label}">Ret</button><button type="button" class="button subtle danger" data-panel-action="delete-route-template" data-id="${id}" aria-label="Slet rute ${label}">Slet</button></div></li>`;
+  });
+  return `<section class="card settings-section settings-quick-card route-template-card full"><div class="settings-section-head panel-head"><div class="panel-title-group">${brandIcon('vehicle', 'panel-icon', 48)}<div><span class="surface-label">RUTEPLAN</span><h2>Gemte ruter</h2></div></div><button type="button" class="button secondary" data-panel-action="new-route-template">+ Opret rute</button></div><p class="settings-copy muted">Gem vogn, affaldstyper og antal tømninger for en fast ugedag. Vælg, om ruten kører hver uge eller skifter mellem lige og ulige uger.</p>${list.length ? `<ul class="settings-list">${list.join('')}</ul>` : '<div class="empty-state compact"><p>Du har endnu ingen gemte ruter.</p></div>'}</section>`;
+}
+
+function renderQuickList(ctx, key, title, label, icon) {
+  const items = ctx.state[key].map((value, index) => {
+    const name = attr(ctx, value);
+    const itemLabel = label.toLowerCase();
+    return `<li><span><span class="muted">${label}</span> <strong>${name}</strong></span><div class="row-actions"><button type="button" class="button subtle" data-panel-action="edit-list-item" data-list="${key}" data-index="${index}" aria-label="Ret ${itemLabel} ${name}">Ret</button><button type="button" class="button subtle danger" data-panel-action="delete-list-item" data-list="${key}" data-index="${index}" aria-label="Fjern ${itemLabel} ${name}">Fjern</button></div></li>`;
+  });
+  return `<section class="card settings-quick-card"><div class="panel-head"><div class="panel-title-group">${brandIcon(icon)}<h3>${title}</h3></div><button type="button" class="button secondary" data-panel-action="new-list-item" data-list="${key}">+ Tilføj</button></div>${items.length ? `<ul class="settings-list">${items.join('')}</ul>` : `<div class="empty-state compact"><p>Ingen ${title.toLowerCase()} tilføjet endnu.</p></div>`}<p class="muted field-hint">Brug listen til hurtige valg ved nye registreringer.</p></section>`;
+}
+
+export function renderRoutes(ctx) {
+  return `${pageHeading('vehicle', 'FASTE KØRSLER', 'Ture', 'Saml dine faste ruter og turnumre, så de er klar ved næste registrering.')}
+    <div class="settings-layout">${renderRouteTemplates(ctx)}<div class="full">${renderQuickList(ctx, 'routes', 'Turnumre', 'Turnummer', 'time')}</div></div>`;
+}
+
+function renderPreferences(ctx) {
+  const prefs = ctx.state.settings.preferences || defaultPreferences();
+  const routes = (ctx.state.routeTemplates || []).map(route => [route.id, `${route.name} (${routeScheduleLabel(route)})`]);
+  return `<section class="card settings-section settings-profile-card advanced-settings-card full"><div class="settings-section-head"><div class="panel-title-group">${brandIcon('time', 'panel-icon', 48)}<div><span class="surface-label">03 · ARBEJDSGANG</span><h2>Avancerede indstillinger</h2></div></div></div><p class="settings-copy muted">Vælg standarder for nye arbejdsdage, og tilpas visningen på din enhed.</p><form id="preferences-form" class="form-grid">
+    ${field(ctx, 'Standardstart', 'defaultStart', prefs.defaultStart, { type: 'time' })}
+    ${field(ctx, 'Standardslut', 'defaultEnd', prefs.defaultEnd, { type: 'time' })}
+    <p class="field-hint muted full">Udfyld begge tider, eller lad begge stå tomme for at indtaste dem selv.</p>
+    ${field(ctx, 'Ubetalt pause som standard (min.)', 'defaultBreakMinutes', prefs.defaultBreakMinutes ?? 0, { type: 'number', min: 0, max: 1439, step: 1, required: true })}
+    ${selectField(ctx, 'Standardrute', 'defaultRouteId', prefs.defaultRouteId, [['', 'Ingen standardrute'], ...routes])}
+    <label class="check-field"><input type="checkbox" name="compact"${checked(prefs.compact)}><span>Kompakt visning</span></label>
+    <label class="check-field"><input type="checkbox" name="reduceMotion"${checked(prefs.reduceMotion)}><span>Reducér bevægelse</span></label>
+    <div class="full"><button class="button primary" type="submit">Gem avancerede indstillinger</button></div></form></section>`;
+}
+
 export function renderSettings(ctx) {
   const settings = ctx.state.settings;
   const installed = Boolean(ctx.isInstalled || globalThis.matchMedia?.('(display-mode: standalone)')?.matches);
   return `${pageHeading('settings', 'ET ARBEJDSRUM, DER PASSER DIG', 'Indstillinger', 'Din profil, dine faste valg og dine data. Samlet på ét sted.')}
     <div class="settings-layout"><section class="card settings-section settings-profile-card full"><div class="settings-section-head"><div class="panel-title-group">${brandIcon('settings', 'panel-icon', 48)}<div><span class="surface-label">01 · PERSONLIGT</span><h2>Profil & standardvalg</h2></div></div></div><p class="settings-copy muted">Gør det personligt. Dit standardjob er klar, hver gang du registrerer en ny dag.</p><form id="settings-form" class="form-grid">${field(ctx, 'Dit navn', 'name', settings.name, { placeholder: 'Dit navn', maxLength: 200 })}${selectField(ctx, 'Standardjob', 'defaultJobId', settings.defaultJobId, [['', 'Vælg job'], ...ctx.state.jobs.map(job => [job.id, job.name])])}${settingsDefaults(ctx)}<div class="full"><button class="button primary" type="submit">Gem indstillinger</button></div></form></section>
-    <section class="settings-section full"><div class="settings-section-head"><div><span class="surface-label">02 · DINE FASTE VALG</span><h2>Klar til næste arbejdsdag</h2><p class="muted">Dine vogne og ture er lige ved hånden, når du registrerer.</p></div></div><div class="settings-quick-grid">${[['vehicles', 'Vogne', 'Vognnummer', 'vehicle'], ['routes', 'Ture', 'Turnummer', 'time']].map(([key, title, label, icon]) => `<section class="card settings-quick-card"><div class="panel-head"><div class="panel-title-group">${brandIcon(icon)}<h3>${title}</h3></div><button class="button secondary" data-panel-action="new-list-item" data-list="${key}">+ Tilføj</button></div>${ctx.state[key].length ? `<ul class="settings-list">${ctx.state[key].map((value, index) => `<li><span><span class="muted">${label}</span> <strong>${attr(ctx, value)}</strong></span><div class="row-actions"><button class="button subtle" data-panel-action="edit-list-item" data-list="${key}" data-index="${index}" aria-label="Ret ${label.toLowerCase()} ${attr(ctx, value)}">Ret</button><button class="button subtle danger" data-panel-action="delete-list-item" data-list="${key}" data-index="${index}" aria-label="Fjern ${label.toLowerCase()} ${attr(ctx, value)}">Fjern</button></div></li>`).join('')}</ul>` : `<div class="empty-state compact"><p>Ingen ${title.toLowerCase()} tilføjet endnu.</p><button class="button secondary" data-panel-action="new-list-item" data-list="${key}">Tilføj ${label.toLowerCase()}</button></div>`}<p class="muted field-hint">Ændringer i listen påvirker ikke gemte registreringer eller planer.</p></section>`).join('')}</div></section>
-    <section class="card settings-section settings-data-card"><div class="settings-section-head"><div class="panel-title-group">${brandIcon('export', 'panel-icon', 48)}<div><span class="surface-label">03 · DINE DATA</span><h2>En kopi, du selv har styr på</h2></div></div></div><p class="settings-copy muted">Dine registreringer gemmes lokalt i denne browser på denne enhed. Download en sikkerhedskopi, når du vil passe på dem eller flytte dem til en anden enhed.</p><div class="backup-actions"><button class="button primary" data-panel-action="backup">Download sikkerhedskopi</button><button class="button secondary" data-panel-action="import">Importér kopi</button><input id="backup-file" type="file" accept="application/json,.json" hidden></div><p class="muted field-hint">Import erstatter de nuværende data efter din bekræftelse. Automatisk synkronisering mellem enheder er ikke aktiveret.</p></section>
-    <section class="card settings-section settings-install-card"><div class="settings-section-head"><div class="panel-title-group">${brandIcon('overview', 'panel-icon', 48)}<div><span class="surface-label">04 · LIGE VED HÅNDEN</span><h2>Dit arbejdsrum som app</h2></div></div></div><p class="settings-copy muted">Åbn direkte fra skrivebordet på din Windows-computer eller startskærmen på din Samsung-tablet. Dit overblik er kun ét tryk væk.</p><button class="button secondary" type="button" data-action="install-app"${installed ? ' disabled' : ''}>${installed ? 'Appen er allerede installeret' : 'Installér app'}</button><p class="muted field-hint">Brug samme browserprofil til dine lokale data, og gem en sikkerhedskopi, før du rydder browserdata.</p></section></div>`;
+    <section class="settings-section full"><div class="settings-section-head"><div><span class="surface-label">02 · DINE FASTE VALG</span><h2>Klar til næste arbejdsdag</h2><p class="muted">Dine vogne og ture er lige ved hånden, når du registrerer.</p></div></div><div class="settings-quick-grid">${renderQuickList(ctx, 'vehicles', 'Vogne', 'Vognnummer', 'vehicle')}<section class="card settings-quick-card"><div class="panel-head"><div class="panel-title-group">${brandIcon('time')}<h3>Ture</h3></div><button type="button" class="button secondary" data-nav="ture">Åbn ture</button></div><p class="muted">Administrér gemte ruter og turnumre på siden Ture.</p></section></div></section>
+    ${renderPreferences(ctx)}${ctx.syncCard || ''}
+    <section class="card settings-section settings-data-card"><div class="settings-section-head"><div class="panel-title-group">${brandIcon('export', 'panel-icon', 48)}<div><span class="surface-label">05 · DINE DATA</span><h2>En kopi, du selv har styr på</h2></div></div></div><p class="settings-copy muted">Dine registreringer gemmes lokalt i denne browser på denne enhed. Download en sikkerhedskopi, når du vil passe på dem eller flytte dem til en anden enhed.</p><div class="backup-actions"><button class="button primary" data-panel-action="backup">Download sikkerhedskopi</button><button class="button secondary" data-panel-action="import">Importér kopi</button><input id="backup-file" type="file" accept="application/json,.json" hidden></div><p class="muted field-hint">Import erstatter de nuværende data efter din bekræftelse. For vedhæftede fotos indeholder JSON-kopien kun fotooplysninger. Billedfilerne ligger på den enhed, hvor de blev gemt, og i din private sky, hvis de er synkroniseret.</p></section>
+    <section class="card settings-section settings-install-card"><div class="settings-section-head"><div class="panel-title-group">${brandIcon('overview', 'panel-icon', 48)}<div><span class="surface-label">06 · LIGE VED HÅNDEN</span><h2>Dit arbejdsrum som app</h2></div></div></div><p class="settings-copy muted">Åbn direkte fra skrivebordet på din Windows-computer eller startskærmen på din Samsung-tablet. Dit overblik er kun ét tryk væk.</p><button class="button secondary" type="button" data-action="install-app"${installed ? ' disabled' : ''}>${installed ? 'Appen er allerede installeret' : 'Installér app'}</button><p class="muted field-hint">Brug samme browserprofil til dine lokale data, og gem en sikkerhedskopi, før du rydder browserdata.</p></section></div>`;
 }
 
 export function renderCreate(ctx) {
@@ -206,6 +252,66 @@ function saveChange(ctx, message, options) {
   if (!saved) { ctx.toast('Ændringen er kun i hukommelsen. Prøv at gemme igen, eller download en sikkerhedskopi.'); return false; }
   ctx.toast(ctx.isDemo ? 'Ændringen vises kun i demovisningen og gemmes ikke.' : message);
   return true;
+}
+
+function editRouteTemplate(ctx, id) {
+  const route = id ? ctx.state.routeTemplates?.find(item => item.id === id) : {
+    id: uid(), name: '', weekday: 1, weekParity: 'all', vehicle: '', waste: [], empties: 0
+  };
+  if (!route) return;
+  const vehicles = [...new Set([...ctx.state.vehicles, ...(ctx.state.directory?.vehicles || []).map(item => item.number)])];
+  const html = `<div class="form-grid">
+    ${field(ctx, 'Rutenavn / turnummer', 'name', route.name, { required: true, maxLength: 100, full: true, placeholder: 'Fx Rute 12' })}
+    ${selectField(ctx, 'Ugedag', 'weekday', route.weekday, weekdays.map((day, index) => [index + 1, day]))}
+    ${selectField(ctx, 'Uger', 'weekParity', route.weekParity, Object.entries(routeParities))}
+    ${field(ctx, 'Vogn / arbejdssted', 'vehicle', route.vehicle, { maxLength: 100, list: 'route-template-vehicles' })}
+    ${field(ctx, 'Antal tømninger', 'empties', route.empties, { type: 'number', min: 0, max: 100000, step: 1, required: true })}
+    <datalist id="route-template-vehicles">${vehicles.map(vehicle => `<option value="${attr(ctx, vehicle)}"></option>`).join('')}</datalist>
+    <div class="full" role="group" aria-labelledby="route-waste-label"><span class="field-label" id="route-waste-label">Affaldstyper</span><div class="waste-choices">${WASTE_TYPES.map(waste => `<label><input type="checkbox" name="waste" value="${attr(ctx, waste)}"${checked(route.waste.includes(waste))}><span>${attr(ctx, waste)}</span></label>`).join('')}</div></div></div>`;
+  ctx.modal(id ? 'Ret gemt rute' : 'Opret gemt rute', html, data => {
+    const updated = {
+      id: route.id,
+      name: String(data.get('name') || '').trim(),
+      weekday: Number(data.get('weekday')),
+      weekParity: String(data.get('weekParity') || ''),
+      vehicle: String(data.get('vehicle') || '').trim(),
+      waste: data.getAll('waste'),
+      empties: Number(data.get('empties'))
+    };
+    const existing = ctx.state.routeTemplates || [];
+    const routeTemplates = existing.some(item => item.id === updated.id)
+      ? existing.map(item => item.id === updated.id ? updated : item)
+      : [...existing, updated];
+    const validation = validateState({ ...ctx.state, routeTemplates });
+    if (!validation.ok) { ctx.toast(validation.errors[0] || 'Kontrollér oplysningerne for ruten.'); return false; }
+    ctx.state.routeTemplates = validation.state.routeTemplates;
+    return saveChange(ctx, id ? 'Ruten er opdateret.' : 'Ruten er oprettet.');
+  });
+}
+
+function deleteRouteTemplate(ctx, id) {
+  const route = ctx.state.routeTemplates?.find(item => item.id === id);
+  if (!route) return;
+  return ctx.showConfirm('Slet gemt rute?', `“${route.name}” fjernes som valgmulighed ved nye registreringer.`, () => {
+    ctx.state.routeTemplates = ctx.state.routeTemplates.filter(item => item.id !== id);
+    if (ctx.state.settings.preferences?.defaultRouteId === id) ctx.state.settings.preferences.defaultRouteId = '';
+    return saveChange(ctx, 'Ruten er slettet.');
+  });
+}
+
+function savePreferences(ctx, data) {
+  const preferences = {
+    compact: data.has('compact'),
+    reduceMotion: data.has('reduceMotion'),
+    defaultBreakMinutes: Number(data.get('defaultBreakMinutes')),
+    defaultStart: String(data.get('defaultStart') || ''),
+    defaultEnd: String(data.get('defaultEnd') || ''),
+    defaultRouteId: String(data.get('defaultRouteId') || '')
+  };
+  const validation = validateState({ ...ctx.state, settings: { ...ctx.state.settings, preferences } });
+  if (!validation.ok) { ctx.toast(validation.errors[0] || 'Kontrollér dine avancerede indstillinger.'); return; }
+  ctx.state.settings = validation.state.settings;
+  saveChange(ctx, 'Dine avancerede indstillinger er gemt.');
 }
 
 function editJob(ctx, id) {
@@ -352,6 +458,9 @@ function act(ctx, button) {
   }
   if (action === 'new-list-item') return editListItem(ctx, list);
   if (action === 'edit-list-item') return editListItem(ctx, list, index);
+  if (action === 'new-route-template') return editRouteTemplate(ctx);
+  if (action === 'edit-route-template') return editRouteTemplate(ctx, id);
+  if (action === 'delete-route-template') return deleteRouteTemplate(ctx, id);
   if (action === 'delete-list-item' && ['vehicles', 'routes'].includes(list)) {
     const value = ctx.state[list][Number(index)];
     if (value === undefined) return;
@@ -385,6 +494,10 @@ export function bindPanels(ctx) {
     if (!checked.ok) { ctx.toast(checked.errors[0] || 'Kontrollér dine indstillinger.'); return; }
     ctx.state.settings = checked.state.settings;
     saveChange(ctx, 'Dine indstillinger er gemt.');
+  });
+  document.querySelector('#preferences-form')?.addEventListener('submit', event => {
+    event.preventDefault();
+    savePreferences(ctx, new FormData(event.currentTarget));
   });
   document.querySelector('#backup-file')?.addEventListener('change', event => { importBackup(ctx, event.target.files?.[0]); event.target.value = ''; });
 }

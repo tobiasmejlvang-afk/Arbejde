@@ -1,0 +1,17 @@
+/* Keep the native controls visible and avoid a blurred dialog backdrop. */
+#editor::backdrop { background: rgba(11, 10, 9, .74); backdrop-filter: none; }
+#editor[open] { color: var(--text); }
+.entry-waste-group { min-inline-size: 0; margin: 0; padding: 12px; border: 1px solid var(--border); border-radius: 10px; }
+.entry-waste-group legend { padding-inline: 5px; font-weight: 600; }
+.entry-waste { display: flex; flex-wrap: wrap; gap: 8px; }
+.entry-waste label { display: inline-flex; align-items: center; gap: 7px; min-height: 42px; padding: 5px 10px; border: 1px solid var(--border); border-radius: 9px; cursor: pointer; }
+.entry-waste label input[type=checkbox] { position: static; pointer-events: auto; opacity: 1; appearance: auto; width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
+.entry-waste label span, .entry-waste label input:checked + span { padding: 0; background: transparent; border: 0; box-shadow: none; color: inherit; }
+.entry-waste label:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+.cloud-card { grid-column: 1 / -1; }
+.cloud-form { margin-block: 12px; }
+.cloud-card [data-cloud-status-panel] { margin-top: 14px; }
+.compact-workspace .nav-link { min-height: 40px; }
+.compact-workspace .data-table th, .compact-workspace .data-table td { padding-block: 7px; }
+.compact-workspace .panel-head { padding-block: 12px; }
+.reduce-motion *, .reduce-motion *::before, .reduce-motion *::after { scroll-behavior: auto !important; animation: none !important; transition: none !important; }

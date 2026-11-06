@@ -36,9 +36,12 @@ export function hours(value) { return new Intl.NumberFormat('da-DK', {minimumFra
 export function defaultJob(overrides = {}) {
   return {id: uid(), name: 'Mit arbejde', employer: '', role: 'Renovationsmedarbejder', employment: '', startDate: '', scheme: '3', hourlyRate: 0, overtimeRate: 0, periodType: 'month', periodAnchor: weekStart(todayISO()), payday: 31, paydayOffset: 7, pensionEmployee: 0, pensionEmployer: 0, holidayPercent: 0, choicePercent: 0, holidayDays: 0, freeHolidayDays: 0, sickPayPercent: 0, notes: '', ...overrides};
 }
+export function defaultPreferences() {
+  return {compact: false, defaultBreakMinutes: 0, defaultStart: '06:00', defaultEnd: '14:00', defaultRouteId: '', reduceMotion: false};
+}
 export function emptyState() {
   const job = defaultJob();
-  return {version: 1, jobs: [job], entries: [], plans: [], vehicles: [], routes: [], directory: null, settings: {name: '', defaultJobId: job.id}};
+  return {version: 1, jobs: [job], entries: [], plans: [], vehicles: [], routes: [], routeTemplates: [], directory: null, settings: {name: '', defaultJobId: job.id, preferences: defaultPreferences()}};
 }
 export function demoState() {
   const state = emptyState();
@@ -85,17 +88,20 @@ export function calculateAll(state) {
     const key = `${entry.jobId}/${entry.date}`;
     if (!days.has(key)) {
       const weekKey = `${entry.jobId}/${weekStart(entry.date)}`;
-      const dayIndex = (weekDays.get(weekKey) || 0) + 1;
-      weekDays.set(weekKey, dayIndex);
-      days.set(key, {entries: [], dayIndex});
+      const restDay = entry.restDay === true;
+      const dayIndex = restDay ? null : (weekDays.get(weekKey) || 0) + 1;
+      // Work on the weekly rest day is overtime from minute one. It does not
+      // occupy one of the normal days with an accord guarantee.
+      if (!restDay) weekDays.set(weekKey, dayIndex);
+      days.set(key, {entries: [], dayIndex, restDay});
     }
     days.get(key).entries.push(entry);
   }
   const allocation = new Map();
   for (const group of days.values()) {
     const first = group.entries[0], job = jobs.get(first.jobId), scheme = first.scheme || job.scheme;
-    const norm = dailyNorm(scheme, first.date);
-    const extraDay = scheme === '3' ? group.dayIndex > 3 : scheme === '4' ? group.dayIndex > 4 : norm === 0;
+    const norm = group.restDay ? 0 : dailyNorm(scheme, first.date);
+    const extraDay = group.restDay || (scheme === '3' ? group.dayIndex > 3 : scheme === '4' ? group.dayIndex > 4 : norm === 0);
     const guaranteed = (scheme === '3' || scheme === '4') && !extraDay;
     // Extra tasks are part of the shift; only explicitly paid overtime is reclassified.
     // A guaranteed accord day keeps its base guarantee while paid extras become overtime.
@@ -151,6 +157,27 @@ function validateExtra(extra, index) {
   if (extra.waste && !WASTE_TYPES.includes(extra.waste)) errors.push(`${label}: ukendt affaldstype.`);
   return errors;
 }
+const PHOTO_KEYS = ['id', 'name', 'mime', 'size'];
+const PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const photoId = /^[a-f0-9]{32}$|^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i;
+function validatePhotoRefs(photos) {
+  if (!Array.isArray(photos) || photos.length > 6) return ['En registrering kan have højst 6 fotos.'];
+  const ids = new Set(), errors = [];
+  for (const [index, photo] of photos.entries()) {
+    const label = `Foto ${index + 1}`;
+    if (!record(photo) || Object.keys(photo).some(key => !PHOTO_KEYS.includes(key))) {
+      errors.push(`${label}: ugyldige fotooplysninger.`);
+      continue;
+    }
+    if (typeof photo.id !== 'string' || !photoId.test(photo.id)) errors.push(`${label}: ugyldigt id.`);
+    else if (ids.has(photo.id)) errors.push('Det samme foto må kun tilføjes én gang pr. registrering.');
+    ids.add(photo.id);
+    if (typeof photo.name !== 'string' || !photo.name.trim() || photo.name.length > 150) errors.push(`${label}: ugyldigt filnavn.`);
+    if (!PHOTO_TYPES.includes(photo.mime)) errors.push(`${label}: vælg et JPEG-, PNG- eller WebP-billede.`);
+    if (!Number.isInteger(photo.size) || photo.size < 1 || photo.size > 5242880) errors.push(`${label}: størrelsen skal være mellem 1 byte og 5 MiB.`);
+  }
+  return errors;
+}
 export function validateEntry(entry, state, skipConflicts = false) {
   if (!record(entry)) return ['Registreringen har et ugyldigt format.'];
   const errors = [];
@@ -159,6 +186,8 @@ export function validateEntry(entry, state, skipConflicts = false) {
   const job = state.jobs.find(item => item.id === entry.jobId);
   if (!job) errors.push('Vælg et eksisterende job.');
   if (!ENTRY_TYPES.includes(entry.type)) errors.push('Vælg en gyldig registreringstype.');
+  if (own(entry, 'restDay') && typeof entry.restDay !== 'boolean') errors.push('Hviledag skal være markeret som ja eller nej.');
+  if (own(entry, 'photos')) errors.push(...validatePhotoRefs(entry.photos));
   for (const key of ['driver', 'colleague', 'planId', 'timerId']) if (own(entry, key) && (typeof entry[key] !== 'string' || entry[key].length > 200)) errors.push('Chauffør, kollega og referencer skal være tekst på højst 200 tegn.');
   if (!['3', '4', '5'].includes(entry.scheme || job?.scheme)) errors.push('Vælg en gyldig arbejdsuge.');
   if (own(entry, 'extras') && !Array.isArray(entry.extras)) errors.push('Ekstraarbejde skal være en liste.');
@@ -184,7 +213,10 @@ export function validateEntry(entry, state, skipConflicts = false) {
     if (other.id === entry.id || other.jobId !== entry.jobId) continue;
     if (other.date === entry.date) {
       if (entry.type !== 'work' || other.type !== 'work') errors.push('Der findes allerede en registrering på denne dato for jobbet.');
-      else if ((other.scheme || job?.scheme) !== (entry.scheme || job?.scheme)) errors.push('Vagter på samme dato skal have samme arbejdsuge.');
+      else {
+        if ((other.scheme || job?.scheme) !== (entry.scheme || job?.scheme)) errors.push('Vagter på samme dato skal have samme arbejdsuge.');
+        if ((other.restDay === true) !== (entry.restDay === true)) errors.push('Vagter på samme dato skal have samme hviledagsmarkering.');
+      }
     }
     const currentInterval = interval(entry), otherInterval = interval(other);
     if (currentInterval && otherInterval && currentInterval[0] < otherInterval[1] && currentInterval[1] > otherInterval[0]) errors.push('Vagten overlapper en anden vagt for jobbet.');
@@ -195,10 +227,12 @@ export function validateEntry(entry, state, skipConflicts = false) {
 // Import only recognized keys and primitives. Unknown keys are rejected, including
 // prototype-like names, so backups cannot smuggle unrelated application state.
 const JOB_KEYS = ['id', 'name', 'employer', 'role', 'employment', 'startDate', 'scheme', 'hourlyRate', 'overtimeRate', 'periodType', 'periodAnchor', 'payday', 'paydayOffset', 'pensionEmployee', 'pensionEmployer', 'holidayPercent', 'choicePercent', 'holidayDays', 'freeHolidayDays', 'sickPayPercent', 'notes'];
-const ENTRY_KEYS = ['id', 'date', 'jobId', 'type', 'scheme', 'start', 'end', 'breakMinutes', 'vehicle', 'route', 'crew', 'driver', 'colleague', 'planId', 'timerId', 'empties', 'waste', 'extras', 'notes'];
+const ENTRY_KEYS = ['id', 'date', 'jobId', 'type', 'scheme', 'start', 'end', 'breakMinutes', 'vehicle', 'route', 'crew', 'driver', 'colleague', 'planId', 'timerId', 'empties', 'waste', 'extras', 'notes', 'restDay', 'photos'];
 const EXTRA_KEYS = ['id', 'kind', 'task', 'minutes', 'vehicle', 'forVehicle', 'from', 'to', 'address', 'waste', 'container', 'paidOvertime'];
 const PLAN_KEYS = ['id', 'date', 'from', 'to', 'weekdays', 'jobId', 'scheme', 'title', 'start', 'end', 'vehicle', 'route', 'notes', 'driver', 'colleague', 'crew', 'people', 'kind', 'source'];
 const PLAN_SOURCE_KEYS = ['type', 'fileName', 'fileHash', 'page', 'row', 'importedAt', 'week', 'year'];
+const ROUTE_TEMPLATE_KEYS = ['id', 'name', 'weekParity', 'weekday', 'vehicle', 'waste', 'empties'];
+const PREFERENCE_KEYS = ['compact', 'defaultBreakMinutes', 'defaultStart', 'defaultEnd', 'defaultRouteId', 'reduceMotion'];
 const TEXT_KEYS = ['id', 'name', 'employer', 'role', 'employment', 'startDate', 'scheme', 'periodType', 'periodAnchor', 'notes', 'date', 'jobId', 'type', 'start', 'end', 'vehicle', 'route', 'crew', 'driver', 'colleague', 'kind', 'task', 'forVehicle', 'from', 'to', 'address', 'container', 'title'];
 function schema(object, allowed, label, errors) {
   if (!record(object)) { errors.push(`${label}: ugyldigt objekt.`); return false; }
@@ -208,7 +242,7 @@ function schema(object, allowed, label, errors) {
 }
 export function validateState(data) {
   const errors = [];
-  if (!schema(data, ['version', 'jobs', 'entries', 'plans', 'vehicles', 'routes', 'settings', 'directory'], 'Backup', errors)) return {ok: false, errors, state: null};
+  if (!schema(data, ['version', 'jobs', 'entries', 'plans', 'vehicles', 'routes', 'routeTemplates', 'settings', 'directory'], 'Backup', errors)) return {ok: false, errors, state: null};
   if (data.version !== 1) errors.push('Backupversionen understøttes ikke.');
   for (const key of ['jobs', 'entries', 'plans', 'vehicles', 'routes']) if (!Array.isArray(data[key])) errors.push(`${key} skal være en liste.`);
   if (errors.length) return {ok: false, errors, state: null};
@@ -253,6 +287,7 @@ export function validateState(data) {
     if (group.some(entry => entry.type !== 'work')) errors.push('Backuppen har flere registreringer på en fraværsdag for samme job.');
     const job = data.jobs.find(item => item.id === group[0].jobId);
     if (new Set(group.map(entry => entry.scheme || job?.scheme)).size > 1) errors.push('Vagter på samme dato skal have samme arbejdsuge.');
+    if (new Set(group.filter(entry => entry.type === 'work').map(entry => entry.restDay === true)).size > 1) errors.push('Vagter på samme dato skal have samme hviledagsmarkering.');
   }
   for (const spans of jobIntervals.values()) {
     spans.sort((a, b) => a[0] - b[0]);
@@ -283,10 +318,38 @@ export function validateState(data) {
     }
   }
   for (const key of ['vehicles', 'routes']) if (data[key].length > 1000 || data[key].some(value => typeof value !== 'string' || !value.trim() || value.length > 100) || new Set(data[key]).size !== data[key].length) errors.push(`${key} skal indeholde unikke, korte tekstværdier.`);
-  if (schema(data.settings, ['name', 'defaultJobId', 'defaultDriver', 'defaultVehicle'], 'Indstillinger', errors)) {
+  const routeTemplateIds = new Set();
+  if (own(data, 'routeTemplates')) {
+    if (!Array.isArray(data.routeTemplates) || data.routeTemplates.length > 1000) errors.push('Gemte ruter skal være en liste med højst 1.000 ruter.');
+    else for (const [index, route] of data.routeTemplates.entries()) {
+      const label = `Gemt rute ${index + 1}`;
+      if (!schema(route, ROUTE_TEMPLATE_KEYS, label, errors)) continue;
+      if (typeof route.id !== 'string' || !route.id.trim() || route.id.length > 200 || routeTemplateIds.has(route.id)) errors.push(`${label}: ruten skal have et gyldigt og unikt id.`);
+      else routeTemplateIds.add(route.id);
+      if (typeof route.name !== 'string' || !route.name.trim() || route.name.length > 100) errors.push(`${label}: rutenavnet skal være mellem 1 og 100 tegn.`);
+      if (!['all', 'even', 'odd'].includes(route.weekParity)) errors.push(`${label}: vælg alle, lige eller ulige uger.`);
+      if (!Number.isInteger(route.weekday) || route.weekday < 1 || route.weekday > 7) errors.push(`${label}: vælg en gyldig ugedag.`);
+      if (own(route, 'vehicle') && (typeof route.vehicle !== 'string' || route.vehicle.length > 100)) errors.push(`${label}: ugyldigt vognnummer eller arbejdssted.`);
+      if (!Array.isArray(route.waste) || route.waste.some(value => !WASTE_TYPES.includes(value)) || new Set(route.waste).size !== route.waste.length) errors.push(`${label}: vælg gyldige, forskellige affaldstyper.`);
+      if (!Number.isInteger(route.empties) || route.empties < 0 || route.empties > 100000) errors.push(`${label}: tømninger skal være et helt tal mellem 0 og 100.000.`);
+    }
+  }
+  if (schema(data.settings, ['name', 'defaultJobId', 'defaultDriver', 'defaultVehicle', 'preferences'], 'Indstillinger', errors)) {
     if (typeof data.settings.name !== 'string' || data.settings.name.length > 200) errors.push('Navnet i indstillingerne er ugyldigt.');
     if (typeof data.settings.defaultJobId !== 'string' || (data.settings.defaultJobId && !data.jobs.some(job => job.id === data.settings.defaultJobId))) errors.push('Standardjobbet findes ikke.');
     for (const key of ['defaultDriver', 'defaultVehicle']) if (own(data.settings, key) && (typeof data.settings[key] !== 'string' || data.settings[key].length > 200)) errors.push('Standardchauffør og -vogn skal være tekst på højst 200 tegn.');
+    if (own(data.settings, 'preferences') && schema(data.settings.preferences, PREFERENCE_KEYS, 'Personlige standardvalg', errors)) {
+      const preferences = data.settings.preferences;
+      if (typeof preferences.compact !== 'boolean' || typeof preferences.reduceMotion !== 'boolean') errors.push('Kompakt visning og mindre bevægelse skal være valgt til eller fra.');
+      const breakMinutes = preferences.defaultBreakMinutes;
+      if (!Number.isInteger(breakMinutes) || breakMinutes < 0 || breakMinutes > 1439) errors.push('Standardpausen skal være et helt tal mellem 0 og 1.439 minutter.');
+      if (preferences.defaultStart !== '' || preferences.defaultEnd !== '') {
+        const start = timeValue(preferences.defaultStart), end = timeValue(preferences.defaultEnd);
+        if (start === null || end === null || start === end) errors.push('Angiv to forskellige gyldige standardtider, eller lad begge felter være tomme.');
+        else if (Number.isInteger(breakMinutes) && breakMinutes >= (end - start + 1440) % 1440) errors.push('Standardpausen skal være kortere end vagten.');
+      }
+      if (typeof preferences.defaultRouteId !== 'string' || preferences.defaultRouteId.length > 200 || (preferences.defaultRouteId && !routeTemplateIds.has(preferences.defaultRouteId))) errors.push('Den valgte standardrute findes ikke.');
+    }
   }
   let directory = null;
   if (own(data, 'directory') && data.directory !== null) {

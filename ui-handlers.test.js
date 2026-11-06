@@ -116,6 +116,40 @@ test('quick-list validation and failed-save retries cannot corrupt or delete the
   assert.deepEqual(h.ctx.state.vehicles, ['102', '103']);
 });
 
+test('saved route retries preserve one template and deletion clears its default reference', async t => {
+  const module = await panels();
+  const h = harness(t, module);
+  h.ctx.state.routes = ['Historisk tur'];
+  h.act('new-route-template');
+  const values = { name: 'Øst <1>', weekday: 2, weekParity: 'even', vehicle: '999', waste: ['Mad', 'Rest'], empties: 315 };
+  assert.equal(await h.submit({ ...values, empties: -1 }), false);
+  assert.deepEqual(h.ctx.state.routeTemplates, []);
+  h.setDurable(false);
+  assert.equal(await h.submit(values), false);
+  const { id } = h.ctx.state.routeTemplates[0];
+  h.setDurable(true);
+  assert.equal(await h.submit(values), true);
+  assert.deepEqual(h.ctx.state.routeTemplates, [{ ...values, id }]);
+  h.ctx.state.settings.preferences.defaultRouteId = id;
+  const routes = module.renderRoutes(h.ctx);
+  assert.match(routes, /Øst &lt;1&gt;/);
+  assert.match(routes, /Tirsdag · Lige uger/);
+  assert.match(routes, /Historisk tur/);
+  const settings = module.renderSettings(h.ctx);
+  assert.match(settings, /data-nav="ture">Åbn ture/);
+  assert.doesNotMatch(settings, /data-panel-action="new-route-template"/);
+  assert.match(settings, /<option[^>]+selected>Øst/);
+  h.act('edit-route-template', { id });
+  assert.equal(await h.submit({ ...values, empties: 300 }), true);
+  assert.equal(h.ctx.state.routeTemplates[0].empties, 300);
+  h.act('delete-route-template', { id });
+  assert.equal(h.ctx.confirmValue.submit(), true);
+  assert.deepEqual(h.ctx.state.routeTemplates, []);
+  assert.equal(h.ctx.state.settings.preferences.defaultRouteId, '');
+  assert.deepEqual(h.ctx.state.routes, ['Historisk tur']);
+  assert.equal(validateState(h.ctx.state).ok, true);
+});
+
 test('backup restore and job deletion protect an active timer, and restore is blocked in demo', async t => {
   const h = harness(t, await panels());
   h.ctx.timer.snapshot = () => ({ jobId: h.ctx.state.jobs[0].id });
