@@ -9,7 +9,11 @@ const DAY = 86400000;
 const validDate = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value + 'T00:00:00Z')) && new Date(value + 'T00:00:00Z').toISOString().slice(0, 10) === value;
 const stamp = date => Date.parse(date + 'T00:00:00Z');
 const iso = value => new Date(value).toISOString().slice(0, 10);
-const round = (value, precision = 2) => Math.round((value + Number.EPSILON) * 10 ** precision) / 10 ** precision;
+function round(value, precision = 2) {
+  const scale = 10 ** precision;
+  const scaled = value * scale;
+  return Math.round(scaled + Math.abs(scaled) * Number.EPSILON) / scale;
+}
 const numeric = value => typeof value === 'number' && Number.isFinite(value);
 const timeValue = value => typeof value === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(value) ? Number(value.slice(0, 2)) * 60 + Number(value.slice(3)) : null;
 const own = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
@@ -23,8 +27,11 @@ export function uid() { return globalThis.crypto?.randomUUID?.() || `id-${Date.n
 export function addDays(date, days) { return iso(stamp(date) + days * DAY); }
 export function weekStart(date) { return addDays(date, -((new Date(stamp(date)).getUTCDay() + 6) % 7)); }
 export function monthRange(date = todayISO()) {
-  const d = new Date(stamp(date));
-  return {start: iso(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)), end: iso(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0))};
+  const month = new Date(stamp(date));
+  month.setUTCDate(1);
+  const start = iso(month);
+  month.setUTCMonth(month.getUTCMonth() + 1, 0);
+  return {start, end: iso(month)};
 }
 export function dateLabel(date, options = {}) {
   if (!validDate(date)) return '—';
@@ -69,7 +76,8 @@ export function payPeriod(job, date = todayISO()) {
 function shiftMinutes(entry) {
   const start = timeValue(entry.start), end = timeValue(entry.end);
   if (start === null || end === null || start === end) return 0;
-  return Math.max(0, (end < start ? end + 1440 : end) - start - (Number(entry.breakMinutes) || 0));
+  const pause = numeric(entry.breakMinutes) ? entry.breakMinutes : 0;
+  return Math.max(0, (end < start ? end + 1440 : end) - start - pause);
 }
 function dailyNorm(scheme, date) {
   if (scheme === '3') return 12.33;
@@ -105,16 +113,17 @@ export function calculateAll(state) {
     const guaranteed = (scheme === '3' || scheme === '4') && !extraDay;
     // Extra tasks are part of the shift; only explicitly paid overtime is reclassified.
     // A guaranteed accord day keeps its base guarantee while paid extras become overtime.
-    let baseCapacity = extraDay ? 0 : norm;
-    let remainingGuarantee = guaranteed ? norm : 0;
+    // Keep shifts and extra work in minutes until the split is complete.
+    // Ignore floating-point residue from legacy fractional-minute values.
+    const positiveRemainder = minutes => minutes > 1e-9 ? minutes : 0;
+    let baseCapacity = extraDay ? 0 : norm * 60;
     for (let index = 0; index < group.entries.length; index++) {
-      const entry = group.entries[index], actual = shiftMinutes(entry) / 60;
-      const explicitOT = Math.min(actual, (entry.extras || []).filter(extra => extra.paidOvertime).reduce((sum, extra) => sum + (Number(extra.minutes) || 0) / 60, 0));
+      const entry = group.entries[index], actual = shiftMinutes(entry);
+      const explicitOT = (entry.extras || []).reduce((sum, extra) => sum + (extra.paidOvertime && numeric(extra.minutes) ? extra.minutes : 0), 0);
       const ordinary = Math.min(baseCapacity, Math.max(0, actual - explicitOT));
-      baseCapacity = Math.max(0, baseCapacity - ordinary);
-      remainingGuarantee = Math.max(0, remainingGuarantee - ordinary);
-      const guarantee = guaranteed && index === group.entries.length - 1 ? remainingGuarantee : 0;
-      allocation.set(entry.id, {actualHours: actual, baseHours: ordinary + guarantee, overtimeHours: actual - ordinary, guaranteeHours: guarantee, dayIndex: group.dayIndex, nominalHours: norm, extraDay});
+      baseCapacity = positiveRemainder(baseCapacity - ordinary);
+      const guarantee = guaranteed && index === group.entries.length - 1 ? baseCapacity : 0;
+      allocation.set(entry.id, {actualHours: actual / 60, baseHours: (ordinary + guarantee) / 60, overtimeHours: positiveRemainder(actual - ordinary) / 60, guaranteeHours: guarantee / 60, dayIndex: group.dayIndex, nominalHours: norm, extraDay});
     }
   }
   return sorted.map(entry => {
@@ -135,7 +144,12 @@ export function calculateAll(state) {
 }
 export function summarize(rows) {
   const fields = ['actualHours', 'baseHours', 'overtimeHours', 'paidHours', 'basePay', 'overtimePay', 'grossPay', 'pensionEmployee', 'pensionEmployer', 'choice', 'holidayAccrual', 'guaranteeHours'];
-  const result = Object.fromEntries(fields.map(field => [field, round(rows.reduce((sum, row) => sum + (row[field] || 0), 0), field.endsWith('Hours') ? 4 : 2)]));
+  const result = Object.fromEntries(fields.map(field => {
+    if (field.endsWith('Hours')) return [field, round(rows.reduce((sum, row) => sum + (row[field] || 0), 0), 4)];
+    // Each registration already rounds to øre. Sum those whole units exactly.
+    const totalOre = rows.reduce((sum, row) => sum + Math.round((row[field] || 0) * 100), 0);
+    return [field, totalOre / 100];
+  }));
   return {...result, days: new Set(rows.map(row => row.entry.date)).size, workDays: new Set(rows.filter(row => row.entry.type === 'work').map(row => `${row.entry.jobId}/${row.entry.date}`)).size, holidayDays: rows.filter(row => row.entry.type === 'holiday').length, freeHolidayDays: rows.filter(row => row.entry.type === 'freeHoliday').length, sickDays: rows.filter(row => row.entry.type === 'sick').length, absenceDays: rows.filter(row => row.entry.type === 'absence').length, empties: rows.reduce((sum, row) => sum + (row.entry.type === 'work' ? Number(row.entry.empties) || 0 : 0), 0), rateMissing: rows.some(row => row.rateMissing), entries: rows.length};
 }
 
@@ -203,7 +217,7 @@ export function validateEntry(entry, state, skipConflicts = false) {
     if (!Array.isArray(entry.extras)) errors.push('Ekstraarbejde skal være en liste.');
     else {
       entry.extras.forEach((extra, index) => errors.push(...validateExtra(extra, index)));
-      if (entry.extras.reduce((sum, extra) => sum + (Number(extra?.minutes) || 0), 0) > shiftMinutes(entry)) errors.push('Ekstraarbejdets samlede tid må ikke overstige vagtens arbejdstid.');
+      if (entry.extras.reduce((sum, extra) => sum + (numeric(extra?.minutes) ? extra.minutes : 0), 0) > shiftMinutes(entry)) errors.push('Ekstraarbejdets samlede tid må ikke overstige vagtens arbejdstid.');
       const ids = entry.extras.map(extra => extra?.id);
       if (ids.some(id => typeof id !== 'string' || !id) || new Set(ids).size !== ids.length) errors.push('Ekstraarbejde skal have unikke id’er.');
     }
@@ -274,6 +288,7 @@ export function validateState(data) {
   // Batch imports use indexed conflict checks, not a quadratic scan of all entries.
   const dateGroups = new Map(), jobIntervals = new Map();
   for (const entry of data.entries) {
+    if (typeof entry.jobId !== 'string' || !validDate(entry.date)) continue;
     const key = `${entry.jobId}/${entry.date}`;
     if (!dateGroups.has(key)) dateGroups.set(key, []);
     dateGroups.get(key).push(entry);

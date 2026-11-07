@@ -22,10 +22,12 @@ Ekstra tømninger og andre opgaver ligger inden for vagtens start/slut. De tilf�
 
 ## 4. Gem en kopi og brug dine enheder
 
-Tag en fuld JSON-backup under **Indstillinger**. Den indeholder gemte registreringer, planer, register og personlige valg. **En timer, der endnu ikke er gemt som arbejdsdag, er ikke med.** Stop, gennemgå og gem dagen før flytning af data.
+Tag en JSON-backup under **Indstillinger**. Den indeholder gemte registreringer, planer, register, personlige valg og henvisninger til billeder. Billedfiler og den igangværende timer gemmes separat. Stop, gennemgå og gem dagen før flytning af data.
 
-Windows, Samsung-tablet, lokal HTML og forskellige browserprofiler har hver deres lagring. Brug JSON-eksport/import til flytning; der er ingen automatisk synkronisering. CSV er til regneark, ikke gendannelse.
+Log ind med samme konto under **Indstillinger → Login og synkronisering** på Windows og Samsung-tablet. Brug **Kopiér lokale data til kontoen**, hvis du allerede har registreringer på enheden. Gemte ændringer synkroniseres, når enheden er online. Browserprofiler og den lokale HTML-fil har hver deres lokale lagring. Bruger du appen uden konto, kan du flytte registreringerne med JSON-eksport og -import.
 
 Brug [HTTPS-appen](https://tobiasmejlvang-afk.github.io/Arbejde/) og installer den fra browserens menu. Den lokale HTML-kopi kan kræve internet første gang PDF-læserens filer indlæses. Dine PDF-data bliver på enheden. Opbevar private PDFer, registre, JSON- og CSV-filer privat; de hører ikke til i offentlig kildekode eller offentlige udgivelser.
+
+For at tage en hentet opdatering i brug skal du gemme eventuelle åbne registreringer, lukke alle Arbejde-faner og appvinduer og åbne appen igen.
 
 Vil du starte fra kildekoden, kræves Node.js 22.13 eller nyere. Kør `npm start`, og åbn adressen, som terminalen viser. Flere detaljer findes i [README.md](README.md).

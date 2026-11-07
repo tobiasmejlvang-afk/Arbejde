@@ -13,6 +13,7 @@ function failure(error) {
   if (error?.code === 'invalid_credentials') return 'E-mail eller adgangskode blev ikke genkendt.';
   if (error?.code === 'email_not_confirmed') return 'Bekræft først din e-mail via linket i din indbakke.';
   if (error?.code === 'weak_password') return 'Vælg en stærkere adgangskode på mindst 8 tegn.';
+  if (error?.code === '42501') return 'Kontoen har ikke adgang til appens datalager i Supabase.';
   if (error?.status === 429) return 'Der er sendt for mange forsøg. Vent et øjeblik og prøv igen.';
   if (error?.message?.startsWith('Arbejde: ')) return error.message.slice(9);
   return 'Forbindelsen kunne ikke gennemføres. Kontrollér internetforbindelsen og prøv igen.';
@@ -28,7 +29,7 @@ export function createCloudAccount({switchWorkspace, readState, applyState, canA
     conflict: 'Der er forskellige ændringer på denne enhed og på kontoen. Vælg hvilken version du vil beholde.',
     error: status.error?.message || 'Synkronisering afventer forbindelse.'
   })[status.state] || 'Klargør synkronisering';
-  const panel = () => `<p role="status" class="settings-copy muted" data-cloud-status>${escape(user && !recovery ? stateText() : notice)}</p>${user && !recovery ? `<div class="backup-actions"><button class="button secondary" type="button" data-cloud="sync">Synkronisér nu</button>${status.state === 'conflict' ? '<button class="button secondary" type="button" data-cloud="use-cloud">Brug kontoens version</button><button class="button secondary" type="button" data-cloud="use-device">Brug enhedens version</button>' : ''}</div>` : ''}`;
+  const panel = () => `<p role="status" class="settings-copy muted" data-cloud-status>${escape(user && !recovery ? stateText() : notice)}</p>${user && !recovery ? `${notice ? `<p role="alert" class="settings-copy">${escape(notice)}</p>` : ''}<div class="backup-actions"><button class="button secondary" type="button" data-cloud="sync">Synkronisér nu</button>${status.state === 'conflict' ? '<button class="button secondary" type="button" data-cloud="use-cloud">Brug kontoens version</button><button class="button secondary" type="button" data-cloud="use-device">Brug enhedens version</button>' : ''}</div>` : ''}`;
   function refresh() {
     const target = document.querySelector('[data-cloud-status-panel]');
     if (target) target.innerHTML = panel();
@@ -78,9 +79,10 @@ export function createCloudAccount({switchWorkspace, readState, applyState, canA
   }
   function activate(session, event) {
     const next = session?.user;
-    if (event === 'PASSWORD_RECOVERY') recovery = true;
-    if (next?.id === user?.id) { if (event === 'PASSWORD_RECOVERY') onSession(); return; }
+    if (event === 'PASSWORD_RECOVERY') { recovery = true; notice = ''; }
+    if (next?.id === user?.id) { if (recovery && event === 'PASSWORD_RECOVERY') onSession({recovery}); return; }
     engine?.dispose(); engine = null; user = next; status = {state: 'idle'}; uploaded = new Set();
+    notice = '';
     if (!user) recovery = false;
     const accountId = user?.id;
     switchWorkspace(accountId ? `${PROJECT}.${accountId}` : null);
@@ -91,7 +93,7 @@ export function createCloudAccount({switchWorkspace, readState, applyState, canA
         uploadPhotos: document => uploadPhotos(accountId, document, known)});
       if (!recovery) engine.sync();
     }
-    onSession();
+    onSession({recovery});
   }
   async function submit(event) {
     const form = event.target.closest?.('[data-cloud-form]');
@@ -119,8 +121,8 @@ export function createCloudAccount({switchWorkspace, readState, applyState, canA
       if (form.elements.password) form.elements.password.value = '';
       if (action === 'reset') showMessage('Hvis e-mailen har en konto, sender Supabase et link til at vælge ny adgangskode.');
       else if (action === 'signup' && !result.data?.session) showMessage('Tjek din indbakke og bekræft e-mailen, før du logger ind.');
-      else if (action === 'update') { recovery = false; onSession(); engine?.sync(); }
-      else showMessage('Du er logget ind. Henter dine data …');
+      else if (action === 'update') { recovery = false; notice = ''; onSession({recovery}); engine?.sync(); }
+      else showMessage('');
     } catch (error) { showMessage(failure(error)); }
     finally { busy = false; for (const button of form.querySelectorAll('button')) button.disabled = false; }
   }
@@ -129,6 +131,7 @@ export function createCloudAccount({switchWorkspace, readState, applyState, canA
     if (!action || !client) return;
     if (action === 'sync') return engine?.sync();
     if (action === 'logout') {
+      showMessage('');
       try {
         const {error} = await client.auth.signOut({scope: 'local'});
         if (error) showMessage(failure(error));

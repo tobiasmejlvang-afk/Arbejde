@@ -1,4 +1,4 @@
-# Arbejde · Tid & Løn — v3.1.0
+# Arbejde · Tid & Løn — v3.1.1
 
 Personlig dansk app til arbejdstid, renovationsture, akkord, løn og fravær. Version 3 tilføjer lokal PDF-import af arbejdsplaner og en daglig timer. Det orange/grafit-design bruger de leverede logoer og 3D-ikoner samt en lokalt leveret Inter-skrifttype.
 
@@ -70,9 +70,9 @@ PDF-filen behandles lokalt med den medfølgende Mozilla PDF.js-runtime. **PDF-by
 
 Registerimport under **Vogn & kollegaer → Importér register** bruger JSON-typen `arbejde-directory`, version 1. Den erstatter registeret og føjer vognnumre til dine valgmuligheder. Jobs, lønsatser, arbejdsregistreringer, ture, planer og indstillinger bevares. Gem eventuelt det gamle register med **Download register** først.
 
-En fuld JSON-backup under **Indstillinger** indeholder appens gemte datasæt, herunder register, planer og personlige valg. Fuld import gendanner hele datasættet. CSV er til videre bearbejdning; JSON bruges til gendannelse. Den separate, igangværende timer følger ikke med.
+En JSON-backup under **Indstillinger** indeholder registreringer, register, planer, personlige valg og henvisninger til vedhæftede billeder. Billedfilerne og den igangværende timer ligger separat. Import af en fuld JSON-backup gendanner hele datasættet. CSV-filerne er beregnet til brug i regneark.
 
-Gyldige ældre data beholdes automatisk på samme webadresse og i samme browserprofil. Lokal HTML, den udgivne app og andre browserprofiler har separat lagring. Brug eksport/import ved flytning mellem dem eller mellem Windows og Samsung-tablet. Browserdata kan forsvinde, når de ryddes; der er ingen automatisk synkronisering eller serverkopi.
+Gyldige ældre data beholdes automatisk på samme webadresse og i samme browserprofil. Lokal HTML, den udgivne app og andre browserprofiler har separat lagring. Log ind på samme konto under **Indstillinger** for at synkronisere gemte data mellem enhederne, når de er online. Ved brug uden konto kan du flytte registreringerne med JSON-eksport og -import. Gem en kopi, før du rydder browserdata.
 
 ## Start lokalt
 
@@ -93,11 +93,13 @@ For adgang fra tabletten på samme netværk kan PowerShell starte serveren med `
 
 ## Udgiv og installer
 
-Projektet har ingen byggeproces eller API-nøgler. Læg filerne i repositoryets rod, og vælg **Settings → Pages → Deploy from a branch → main → / (root)**. Relative stier understøtter `/Arbejde/`.
+Webappen kan udgives direkte fra repositoryets rod med **Settings → Pages → Deploy from a branch → main → / (root)**. Relative stier understøtter `/Arbejde/`. Kontofunktionen bruger en offentlig Supabase-nøgle til browseren og adgangsregler på serveren. Brug [Supabase-opsætningen](supabase/README.md) ved udgivelse med dit eget projekt.
 
 Når udgivelsen er klar, bruges [appens HTTPS-adresse](https://tobiasmejlvang-afk.github.io/Arbejde/) på begge enheder. Installer den via Edge-/Chrome-menuen på Windows eller **Installer app / Føj til startskærm** i Chrome på Samsung-tablet. Menutekster varierer. ZIP-filen er projektets kildekode.
 
-Den installerede webapp cacher app- og PDF-runtimefiler til offlinebrug; tegnkort hentes ved behov og gemmes til senere. Den selvstændige HTML-kopi kan kræve internet for første indlæsning af PDF-læserens statiske filer fra appudgivelsen. PDF-data forbliver lokale. Ved nye udgivelser skal cacheversion og assetliste i `sw.js` opdateres. Genindlæs en allerede åben app efter opdateringen.
+Åbn den installerede webapp online første gang, så appen og PDF-læseren kan gemmes til offlinebrug. PDF-tegnkort hentes efter behov og gemmes til senere. HTML-kopien henter PDF-læserens statiske filer fra appudgivelsen, så den kan kræve internet ved PDF-import. Selve PDF-filen behandles på enheden.
+
+Når en opdatering er hentet, tager den over efter lukning af alle Arbejde-faner og appvinduer. Gem eventuelt åbne formularer, luk vinduerne, og åbn appen igen. Ved udgivelse skal cacheversionen og listen over offlinefiler i `sw.js` passe til udgivelsen.
 
 Der er ikke gennemført test på fysiske Windows-/Samsung-enheder.
 

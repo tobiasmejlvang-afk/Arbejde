@@ -59,13 +59,14 @@ function modal(title,html,onSubmit,{submitLabel='Gem ændringer',guardData=true}
 }
 function formError(message){const node=editor.querySelector('#form-errors');if(node){node.hidden=false;node.textContent=message;node.scrollIntoView({block:'nearest'});}else toast(message);return false;}
 function showConfirm(title,description,callback){modal(title,`<p class="muted">${escape(description)}</p>`,()=>callback(),{submitLabel:'Bekræft'});}
-function ctx(){return {get state(){return state;},get needsRecovery(){return dataStore.needsRecovery||dataStore.readBlocked;},calcs,view,calendarDate,escape,save,navigate,openEntry,openPlannedEntry,timer,get isDemo(){return demoMode;},get syncCard(){return cloudAccount?.render()||'';},get dailyToolsHTML(){return renderDailyTools(this);},get daySummaryHTML(){return renderDaySummary(this);},toast,modal,closeModal,render,showConfirm,isInstalled:isAppInstalled(),setCalendarDate:date=>{calendarDate=date;render();},icon,types,schemes,periodMode,periodDate,jobFilter,rows:selectedRows(),range:periodRange(),job:activeJob(),entryTable};}
+function ctx(){return {get state(){return state;},get needsRecovery(){return dataStore.needsRecovery||dataStore.readBlocked;},calcs,view,calendarDate,escape,save,navigate,openEntry,openPlannedEntry,timer,get isDemo(){return demoMode;},get syncCard(){return cloudAccount?.render()||'';},get dailyToolsHTML(){return renderDailyTools(this);},get daySummaryHTML(){return renderDaySummary(this);},toast,modal,closeModal,render,showConfirm,isInstalled:isAppInstalled(),setCalendarDate:date=>{calendarDate=date;render();},icon,types,schemes,periodMode,periodDate,jobFilter:reportJobFilter(),rows:selectedRows(),range:periodRange(),job:activeJob(),entryTable};}
 const options=(items,value)=>items.map(([v,label])=>`<option value="${escape(v)}" ${String(v)===String(value)?'selected':''}>${escape(label)}</option>`).join('');
 const field=(name,label,value='',type='text',extra='')=>`<label class="field">${label}<input name="${name}" type="${type}" value="${escape(value)}" ${extra}></label>`;
 const select=(name,label,items,value,extra='')=>`<label class="field">${label}<select name="${name}" ${extra}>${options(items,value)}</select></label>`;
 function activeJob(){return state.jobs.find(j=>j.id===jobFilter)||state.jobs.find(j=>j.id===state.settings.defaultJobId)||state.jobs[0];}
 function periodRange(){const job=activeJob();return periodMode==='pay'&&job?payPeriod(job,periodDate):monthRange(periodDate);}
-function selectedRows(){const range=periodRange();return calcs.filter(c=>c.entry.date>=range.start&&c.entry.date<=range.end&&(!jobFilter||c.entry.jobId===jobFilter));}
+function reportJobFilter(){return periodMode==='pay'?(activeJob()?.id||''):jobFilter;}
+function selectedRows(){const range=periodRange(),filter=reportJobFilter();return calcs.filter(c=>c.entry.date>=range.start&&c.entry.date<=range.end&&(!filter||c.entry.jobId===filter));}
 function header(title,subtitle,actions=''){return `<div class="page-heading"><div><div class="section-label">DIT PERSONLIGE ARBEJDSRUM</div><h1>${title}</h1><p>${subtitle}</p></div>${actions}</div>`;}
 function entryTable(rows,limit=6){return rows.length?`<div class="table-wrap"><table class="data-table"><thead><tr><th>Dato / registrering</th><th>Tur & vogn</th><th>Arbejdet</th><th>Betalte timer</th><th>Overarbejde</th><th></th></tr></thead><tbody>${rows.slice(0,limit).map(c=>`<tr><td><div class="table-title">${escape(dateLabel(c.entry.date))}</div><span class="muted small">${escape(types[c.entry.type])}</span></td><td><div>${escape(c.entry.route||'—')}</div><span class="muted small">${escape(c.entry.vehicle?`Vogn ${c.entry.vehicle}`:'—')}</span></td><td>${hours(c.actualHours)}</td><td>${hours(c.paidHours)}</td><td><span class="${c.overtimeHours?'text-amber':'muted'}">${hours(c.overtimeHours)}</span></td><td><button class="icon-button" data-edit="${escape(c.entry.id)}" aria-label="Rediger ${escape(dateLabel(c.entry.date))}">${icon('edit',17)}</button></td></tr>`).join('')}</tbody></table></div>`:`<div class="empty-state">${icon('calendar',32)}<h3>Her begynder dit overblik</h3><p>Registrér din første arbejdsdag.<br>Timer, overarbejde og løn følger automatisk med.</p><button class="button secondary" data-action="new">${icon('plus',17)} Tilføj arbejdsdag</button></div>`;}
 function renderDashboard(){return renderOverview(ctx());}
@@ -353,7 +354,7 @@ function copyLocalToAccount(){
 cloudAccount=createCloudAccount({
   switchWorkspace,readState:()=>{if(storageProblem)throw Error('Arbejde: Gem eller gendan dine lokale data, før synkroniseringen kan fortsætte.');return demoMode?realState:state;},
   applyState:applyCloudState,canApply:canApplyCloud,hasLocal:()=>storage.getItem(workspaceKey)!==null,
-  copyLocal:copyLocalToAccount,onSession:render,confirm:showConfirm,escape,storage
+  copyLocal:copyLocalToAccount,onSession:({recovery})=>recovery?navigate('indstillinger'):render(),confirm:showConfirm,escape,storage
 });
 render();
 cloudAccount.start(app);

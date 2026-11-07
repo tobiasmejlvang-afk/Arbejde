@@ -2,8 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
-import {emptyState, demoState, calculateAll} from './domain.js';
+import {emptyState, demoState, calculateAll, defaultJob, payPeriod, monthRange} from './domain.js';
 import {createDataStore} from './data-store.js';
+import {periodToolbar} from './experience.js';
 
 // Exercise the real application functions without starting its browser shell.
 // All form values and storage snapshots in this file are synthetic.
@@ -70,10 +71,33 @@ function harness() {
     installApp() {}, timerAction() {}
   };
   const context = vm.createContext(sandbox);
-  for (const name of ['closeModal', 'formError', 'modal', 'showConfirm', 'ctx', 'applyStoredData', 'readEntry']) vm.runInContext(functionSource(name), context);
+  for (const name of ['closeModal', 'formError', 'modal', 'showConfirm', 'ctx', 'reportJobFilter', 'applyStoredData', 'readEntry']) vm.runInContext(functionSource(name), context);
   return {context, editor, storage, dataStore, toasts, reconciled, listeners, renders: () => rendered};
 }
 const submitEvent = () => ({preventDefault() {}});
+
+test('pay-period reports scope to the displayed contract while an unfiltered month includes all jobs', () => {
+  const {context} = harness();
+  const monthly = defaultJob({id: 'monthly', name: 'Monthly', periodType: 'month'});
+  const fortnightly = defaultJob({id: 'fortnightly', name: 'Fortnightly', periodType: '14days', periodAnchor: '2028-03-01'});
+  context.state.jobs = [fortnightly, monthly];
+  context.state.settings.defaultJobId = monthly.id;
+  context.calcs = [monthly, fortnightly].map(job => ({entry: {jobId: job.id, date: '2028-03-06'}}));
+  Object.assign(context, {payPeriod, monthRange});
+  for (const name of ['activeJob', 'periodRange', 'selectedRows']) vm.runInContext(functionSource(name), context);
+  context.periodMode = 'pay';
+  assert.deepEqual(Array.from(context.selectedRows(), row => row.entry.jobId), ['monthly']);
+  const toolbar = periodToolbar(context.ctx());
+  assert.match(toolbar, /value="monthly" selected/);
+  assert.doesNotMatch(toolbar, /Alle job/);
+  context.jobFilter = fortnightly.id;
+  assert.deepEqual(Array.from(context.selectedRows(), row => row.entry.jobId), ['fortnightly']);
+  assert.equal(context.periodRange().end, '2028-03-14');
+  context.jobFilter = '';
+  context.periodMode = 'month';
+  assert.equal(context.selectedRows().length, 2);
+  assert.match(periodToolbar(context.ctx()), /Alle job/);
+});
 
 test('saving sickness retains a disabled five-day scheme and its actual sick-pay norm', () => {
   const {context} = harness();

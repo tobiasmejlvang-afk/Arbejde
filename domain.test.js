@@ -74,6 +74,24 @@ test('weekly classification is computed before dashboard filtering', () => {
   const october = calculateAll(state).filter(row => row.entry.date >= '2026-10-01');
   assert.equal(october[0].dayIndex, 4); assert.equal(october[0].overtimeHours, 10);
 });
+test('year boundary preserves the current week, then resets slots for each job on Monday', () => {
+  const state = fixture('5');
+  state.jobs.push(defaultJob({id: 'other-job', scheme: '4', hourlyRate: 160, overtimeRate: 240}));
+  state.entries = [
+    work('2027-01-04', {scheme: '4', end: '13:00'}),
+    work('2027-01-01'),
+    work('2026-12-31', {jobId: 'other-job', scheme: '4', end: '13:00'}),
+    ...[30, 29, 28].map(day => work(`2026-12-${day}`))
+  ];
+  assert.equal(validateState(state).ok, true);
+  const rows = calculateAll(state);
+  assert.equal(rows[0].baseHours, 12.33, 'stored historical schedule overrides current job default');
+  assert.equal(rows[3].dayIndex, 1, 'a separate job starts its own workweek');
+  const january = rows.filter(row => row.entry.date >= '2027-01-01');
+  assert.deepEqual(january.map(row => row.dayIndex), [4, 1]);
+  assert.deepEqual(january.map(row => row.overtimeHours), [10, 0]);
+  assert.equal(summarize(january).baseHours, 9.25);
+});
 test('several shifts share one daily guarantee and count as one workday', () => {
   const state = fixture();
   state.entries = [work('2026-10-19', {id: 'a', start: '05:00', end: '09:00'}), work('2026-10-19', {id: 'b', start: '10:00', end: '14:00'})];
@@ -98,6 +116,32 @@ test('ordinary hourly scheme has no guarantee and uses Friday/weekend limits', (
   const rows = calculateAll(state);
   assert.equal(rows[0].paidHours, 6); assert.equal(rows[1].baseHours, 7); assert.equal(rows[1].overtimeHours, 1); assert.equal(rows[2].baseHours, 0); assert.equal(rows[2].overtimeHours, 8);
 });
+test('split shifts at the daily norm report zero overtime even without an overtime rate', () => {
+  for (const [scheme, date, firstEnd, secondStart, secondEnd, norm] of [
+    ['5', '2026-10-19', '11:38', '12:00', '12:46', 7.4],
+    ['5', '2026-10-23', '05:37', '06:00', '12:23', 7],
+    ['4', '2026-10-19', '06:14', '07:00', '15:01', 9.25]
+  ]) {
+    const state = fixture(scheme);
+    state.jobs[0].overtimeRate = 0;
+    state.entries = [work(date, {id: 'early', scheme, end: firstEnd}), work(date, {id: 'late', scheme, start: secondStart, end: secondEnd})];
+    const rows = calculateAll(state);
+    assert.deepEqual(rows.map(row => row.overtimeHours), [0, 0]);
+    assert.deepEqual(rows.map(row => row.missingRates), [[], []]);
+    assert.equal(summarize(rows).baseHours, norm);
+  }
+});
+test('the three-day norm supports a legacy fractional-minute pause without rounding actual hours', () => {
+  const state = fixture();
+  state.jobs[0].overtimeRate = 0;
+  state.entries = [work('2026-10-19', {end: '17:20', breakMinutes: 0.2})];
+  assert.equal(validateState(state).ok, true);
+  const [row] = calculateAll(state);
+  assert.equal(row.actualHours, 12.33);
+  assert.equal(row.guaranteeHours, 0);
+  assert.equal(row.overtimeHours, 0);
+  assert.equal(row.rateMissing, false);
+});
 test('overnight shifts and pauses calculate correctly', () => {
   const state = fixture('5'); state.entries = [work('2026-10-19', {scheme: '5', start: '22:00', end: '06:00', breakMinutes: 30})];
   const row = calculateAll(state)[0]; assert.equal(row.actualHours, 7.5); near(row.overtimeHours, .1);
@@ -115,13 +159,32 @@ test('pension and savings are separate percentages of known gross wage', () => {
   const state = fixture('5'); state.entries = [work('2026-10-19', {scheme: '5', end: '11:00'})];
   const row = calculateAll(state)[0]; assert.equal(row.grossPay, 1200); assert.equal(row.pensionEmployee, 24); assert.equal(row.pensionEmployer, 120); assert.equal(row.choice, 108); assert.equal(row.holidayAccrual, 150);
 });
+test('exact half-øre amounts round up per registration', () => {
+  const state = fixture('5');
+  state.jobs[0].hourlyRate = 128.17;
+  state.entries = [work('2026-10-19', {scheme: '5', end: '05:30'})];
+  const [row] = calculateAll(state);
+  assert.equal(row.grossPay, 64.09);
+  assert.equal(summarize([row]).grossPay, 64.09);
+});
+test('large reports sum per-registration øre without accumulating floating-point drift', () => {
+  const state = fixture();
+  state.jobs[0].overtimeRate = 100000;
+  state.entries = [work('2026-10-19', {restDay: true, start: '00:00', end: '23:59'})];
+  const [row] = calculateAll(state);
+  assert.equal(row.grossPay, 2398333.33);
+  assert.equal(summarize(Array(12000).fill(row)).grossPay, 28779999960);
+});
 test('date helpers cross month, year, and daylight-saving boundaries', () => {
   assert.equal(weekStart('2027-01-01'), '2026-12-28'); assert.equal(addDays('2026-10-24', 2), '2026-10-26'); assert.deepEqual(monthRange('2028-02-12'), {start: '2028-02-01', end: '2028-02-29'});
+  assert.deepEqual(monthRange('0099-02-12'), {start: '0099-02-01', end: '0099-02-28'});
 });
 test('monthly paydays clamp to month length; fortnight works before anchor', () => {
   const job = defaultJob({periodType: 'month', payday: 31}); assert.equal(payPeriod(job, '2028-02-10').payday, '2028-02-29');
   const period = payPeriod({...job, periodType: '14days', periodAnchor: '2026-10-19', paydayOffset: 7}, '2026-10-18');
   assert.equal(period.start, '2026-10-05'); assert.equal(period.end, '2026-10-18'); assert.equal(period.payday, '2026-10-25');
+  const crossing = payPeriod({...job, periodType: '14days', periodAnchor: '2026-12-28', paydayOffset: 5}, '2027-01-01');
+  assert.equal(crossing.start, '2026-12-28'); assert.equal(crossing.end, '2027-01-10'); assert.equal(crossing.payday, '2027-01-15');
 });
 test('validation catches overnight overlap and allows touching boundaries', () => {
   const state = fixture(); state.entries = [work('2026-10-19', {id: 'night', start: '22:00', end: '06:00'})];
@@ -181,7 +244,9 @@ test('unknown contract benefits default to zero and sickness does not assume wag
 });
 test('malformed JSON text fields return validation errors without invoking object coercion', () => {
   const state = fixture();
-  for (const patch of [{start: {toString: 'not a function'}}, {end: ['15:00']}, {extras: [{id: 'extra-example', kind: 'task', minutes: 1, task: {toString: 'not a function'}, paidOvertime: false}]}]) {
+  const malformed = {toString: 'not a function'};
+  const extra = {id: 'extra-example', kind: 'task', minutes: 1, task: 'Vask', paidOvertime: false};
+  for (const patch of [{start: malformed}, {end: ['15:00']}, {jobId: malformed}, {date: malformed}, {breakMinutes: malformed}, {extras: [{...extra, task: malformed}]}, {extras: [{...extra, minutes: malformed}]}]) {
     const candidate = work('2026-10-19', patch);
     assert.ok(validateEntry(candidate, state).length > 0);
     assert.equal(validateState({...state, entries: [candidate]}).ok, false);
