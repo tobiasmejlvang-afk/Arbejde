@@ -155,9 +155,90 @@ test('missing overtime rate marks amount incomplete without falling back to base
   const state = fixture(); state.jobs[0].overtimeRate = 0; state.entries = [work('2026-10-19', {end: '19:00'})];
   const row = calculateAll(state)[0]; assert.equal(row.rateMissing, true); assert.equal(row.overtimePay, 0); assert.deepEqual(row.missingRates, ['overtimeRate']);
 });
+test('overtime splits between full hourly rates and keeps ordinary hours intact', () => {
+  const state = fixture();
+  state.jobs[0].overtimeRate2 = 450;
+  state.entries = [work('2026-10-19', {end: '19:00', overtimeTier2Minutes: 60})];
+  const [row] = calculateAll(state);
+  assert.equal(row.baseHours, 12.33);
+  near(row.overtimeHours, 1.67);
+  near(row.overtimeTier1Hours, 0.67);
+  assert.equal(row.overtimeTier2Hours, 1);
+  assert.equal(row.overtimeTier1Pay, 201);
+  assert.equal(row.overtimeTier2Pay, 450);
+  assert.equal(row.overtimePay, 651);
+  assert.equal(row.grossPay, 3117);
+  assert.equal(row.paidHours, 14);
+  const sum = summarize([row]);
+  assert.equal(sum.overtimeTier1Hours, 0.67);
+  assert.equal(sum.overtimeTier2Hours, 1);
+  assert.equal(sum.overtimeTier1Pay, 201);
+  assert.equal(sum.overtimeTier2Pay, 450);
+  assert.equal(sum.overtimeTier2ClampedEntries, 0);
+});
+test('rest-day allocation only flags a missing rate when overtime uses that rate', () => {
+  const state = fixture('5');
+  state.jobs[0].overtimeRate2 = 450;
+  state.entries = [work('2026-10-19', {scheme: '5', restDay: true, end: '08:00', breakMinutes: 30, overtimeTier2Minutes: 90})];
+  let [row] = calculateAll(state);
+  assert.equal(row.baseHours, 0);
+  assert.equal(row.overtimeTier1Hours, 1);
+  assert.equal(row.overtimeTier2Hours, 1.5);
+  assert.equal(row.overtimePay, 975);
+  state.entries[0].overtimeTier2Minutes = 150;
+  state.jobs[0].overtimeRate = 0;
+  [row] = calculateAll(state);
+  assert.equal(row.overtimeTier1Hours, 0);
+  assert.equal(row.overtimeTier2Hours, 2.5);
+  assert.deepEqual(row.missingRates, []);
+  delete state.jobs[0].overtimeRate2;
+  [row] = calculateAll(state);
+  assert.deepEqual(row.missingRates, ['overtimeRate2']);
+  assert.equal(row.overtimePay, 0);
+});
+test('rate two clamps to eligible overtime and preserves the requested split after earlier edits', () => {
+  const state = fixture();
+  state.jobs[0].overtimeRate2 = 450;
+  state.entries = ['2026-10-19', '2026-10-20', '2026-10-21', '2026-10-22'].map(date => work(date));
+  state.entries[3].overtimeTier2Minutes = 300;
+  state.entries[3].extras = [{id: 'x', kind: 'task', task: 'Vask', minutes: 30, paidOvertime: true}];
+  assert.equal(calculateAll(state)[3].overtimeTier2Hours, 5);
+  const [row] = calculateAll({...state, entries: state.entries.slice(1)}).slice(-1);
+  assert.equal(row.overtimeHours, 0.5);
+  assert.equal(row.overtimeTier1Hours, 0);
+  assert.equal(row.overtimeTier2Hours, 0.5);
+  assert.equal(row.overtimeTier2Pay, 225);
+  assert.equal(row.overtimeTier2Clamped, true);
+  assert.equal(row.entry.overtimeTier2Minutes, 300);
+  assert.equal(row.basePay, 2466);
+  assert.equal(summarize([row]).overtimeTier2ClampedEntries, 1);
+});
 test('pension and savings are separate percentages of known gross wage', () => {
   const state = fixture('5'); state.entries = [work('2026-10-19', {scheme: '5', end: '11:00'})];
   const row = calculateAll(state)[0]; assert.equal(row.grossPay, 1200); assert.equal(row.pensionEmployee, 24); assert.equal(row.pensionEmployer, 120); assert.equal(row.choice, 108); assert.equal(row.holidayAccrual, 150);
+});
+test('legacy backups keep overtime on rate one and validate optional rate and minutes', () => {
+  const state = fixture();
+  delete state.jobs[0].overtimeRate2;
+  state.entries = [work('2026-10-19', {end: '19:00'})];
+  const legacy = validateState(state);
+  assert.equal(legacy.ok, true);
+  assert.equal(Object.hasOwn(legacy.state.jobs[0], 'overtimeRate2'), false);
+  const [row] = calculateAll(legacy.state);
+  assert.equal(row.overtimeTier1Pay, 501);
+  assert.equal(row.overtimeTier2Pay, 0);
+  assert.equal(row.overtimePay, 501);
+  const entry = {...state.entries[0], overtimeTier2Minutes: 60};
+  const job = {...state.jobs[0], overtimeRate2: 450};
+  assert.equal(validateState({...state, jobs: [job], entries: [entry]}).ok, true);
+  for (const minutes of [-1, 1.5, 1440, '60', null]) {
+    assert.equal(validateState({...state, entries: [{...entry, overtimeTier2Minutes: minutes}]}).ok, false);
+  }
+  for (const rate of [-1, 100001, '450', null]) {
+    assert.equal(validateState({...state, jobs: [{...job, overtimeRate2: rate}]}).ok, false);
+  }
+  assert.equal(validateState({...state, entries: [{...entry, type: 'holiday'}]}).ok, false);
+  assert.equal(validateState({...state, entries: [{...entry, type: 'holiday', overtimeTier2Minutes: 0}]}).ok, true);
 });
 test('exact half-øre amounts round up per registration', () => {
   const state = fixture('5');
@@ -266,6 +347,21 @@ test('route templates and preferences round-trip with an overnight default shift
   const result = validateState(JSON.parse(JSON.stringify(state)));
   assert.equal(result.ok, true); assert.deepEqual(result.state, state);
   assert.equal(validateState({...state, routeTemplates: []}).ok, false);
+});
+test('advanced preferences validate with legacy settings and round-trip present values', () => {
+  const state = emptyState();
+  const preferences = state.settings.preferences;
+  assert.equal(preferences.theme, 'dark');
+  assert.equal(preferences.navigation, 'auto');
+  assert.equal(preferences.startupView, 'overblik');
+  const advanced = {theme: 'contrast', navigation: 'bottom', startupView: 'kalender', showOverviewChart: false, showOverviewActivity: true, showQuickTools: false, showTimer: false};
+  for (const key of Object.keys(advanced)) delete preferences[key];
+  assert.deepEqual(validateState(state).state.settings.preferences, preferences);
+  Object.assign(preferences, advanced);
+  assert.deepEqual(validateState(state).state.settings.preferences, preferences);
+  for (const patch of [{theme: 'other'}, {navigation: 'top'}, {startupView: 'not-a-page'}, {showTimer: 'false'}, {showQuickTools: 0}]) {
+    assert.equal(validateState({...state, settings: {...state.settings, preferences: {...preferences, ...patch}}}).ok, false);
+  }
 });
 test('route templates reject invalid weekdays, duplicate ids, waste and quantities', () => {
   const state = emptyState(), route = {id: 'example-route', name: 'Eksempelrute', weekParity: 'all', weekday: 7, vehicle: '', waste: [], empties: 100000};

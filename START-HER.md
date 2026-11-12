@@ -2,7 +2,7 @@
 
 ## 1. Gør dit job klar
 
-Åbn **Job & kontrakt**, vælg din arbejdsuge, og udfyld satserne fra kontrakten. Tilføj eventuelt dit private vogn-/kollegaregister under **Vogn & kollegaer**. Ukendte lønsatser giver ikke et færdigt lønestimat.
+Åbn **Job & kontrakt**, vælg din arbejdsuge, og udfyld satserne fra kontrakten. Udfyld begge overarbejdssatser som fulde beløb pr. time, hvis din kontrakt bruger to satser. Tilføj eventuelt dit private vogn-/kollegaregister under **Vogn & kollegaer**. Ukendte lønsatser giver ikke et færdigt lønestimat.
 
 ## 2. Hent din arbejdsplan ind
 
@@ -18,7 +18,11 @@ Markér **Brug dette valg til min daglige visning**, hvis appen skal huske perso
 
 Stop timeren ved arbejdsdagens afslutning. Gennemgå start/slut, pause, vogn, tur og bemanding i formularen, og gem dagen. Du kan også indtaste tider manuelt. Tidligere arbejdsdage kan rettes under **Registreringer**.
 
+Brug **Overarbejde på sats 2 (min.)**, når en del af vagtens overarbejde skal betales med sats 2. Det resterende overarbejde beregnes med sats 1.
+
 Ekstra tømninger og andre opgaver ligger inden for vagtens start/slut. De tilføjer ikke den samme tid en ekstra gang.
+
+Under **Indstillinger → Avancerede indstillinger** kan du vælge tema, menuplacering og startside og tilpasse, hvilke værktøjer du ser.
 
 ## 4. Gem en kopi og brug dine enheder
 
@@ -28,6 +32,6 @@ Log ind med samme konto under **Indstillinger → Login og synkronisering** på 
 
 Brug [HTTPS-appen](https://tobiasmejlvang-afk.github.io/Arbejde/) og installer den fra browserens menu. Den lokale HTML-kopi kan kræve internet første gang PDF-læserens filer indlæses. Dine PDF-data bliver på enheden. Opbevar private PDFer, registre, JSON- og CSV-filer privat; de hører ikke til i offentlig kildekode eller offentlige udgivelser.
 
-For at tage en hentet opdatering i brug skal du gemme eventuelle åbne registreringer, lukke alle Arbejde-faner og appvinduer og åbne appen igen.
+For at tage en hentet opdatering i brug skal du gemme eventuelle åbne registreringer, lukke alle Arbejde-faner og appvinduer og åbne appen igen. Opdatér begge enheder, før du synkroniserer registreringer med de nye satser og indstillinger.
 
 Vil du starte fra kildekoden, kræves Node.js 22.13 eller nyere. Kør `npm start`, og åbn adressen, som terminalen viser. Flere detaljer findes i [README.md](README.md).

@@ -33,7 +33,7 @@ Ekstratid kan samlet ikke overstige vagtens faktiske tid. Hvis noget arbejde for
 ## Løn og kontraktoplysninger
 
 - Alle beløb er **estimeret brutto**, før skat, ATP og andre fradrag.
-- Overarbejde anvender jobbets særskilte fulde timesats for overarbejde. Er satsen eksempelvis angivet som 300 kr., er det det samlede beløb pr. overarbejdstime. Appen lægger ikke automatisk den normale timesats oveni.
+- Begge overarbejdssatser er fulde timesatser i kroner. Angiv hele minutter på sats 2 i den enkelte registrering. Appen fordeler højst den beregnede overarbejdstid til sats 2 og bruger sats 1 til resten. Tidligere registreringer starter med hele overarbejdet på sats 1. Hvis en anvendt sats mangler, er lønestimatet ufuldstændigt.
 - Ukendte satser sættes til 0. Indtast satserne fra kontrakten, før løn-estimatet bruges.
 - Akkordgaranti er betalt normaltid; registrerede faktiske timer og betalte timer kan være forskellige.
 - Pension og frivalgsopsparing vises ud fra de gemte satser som særskilte estimater. Arbejdsgiverpension er ikke kontant lønudbetaling. Kontrollér beregningsgrundlag og satser mod kontrakten.

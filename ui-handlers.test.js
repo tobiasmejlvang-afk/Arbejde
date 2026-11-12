@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
-import { emptyState, defaultJob, validateState } from './domain.js';
+import { resolveObjectURL } from 'node:buffer';
+import { calculateAll, defaultPreferences, emptyState, defaultJob, validateState } from './domain.js';
 
 // Public synthetic fixtures only. The reader seam avoids a browser/PDF worker;
 // the real parser, import domain, renderers and event handlers are exercised.
@@ -69,7 +70,8 @@ const jobValues = job => Object.fromEntries(Object.entries(job).filter(([key]) =
 test('job creation keeps its form and stable id when storage fails, then retries without duplicates', async t => {
   const h = harness(t, await panels());
   h.act('new-job');
-  const values = { ...jobValues(defaultJob()), name: 'Synthetic job' };
+  const values = { ...jobValues(defaultJob()), name: 'Synthetic job', overtimeRate2: 450 };
+  assert.match(h.ctx.modalValue.html, /name="overtimeRate2"/);
   h.setDurable(false);
   assert.equal(await h.submit(values), false);
   assert.equal(h.ctx.modalValue.closed, false);
@@ -79,7 +81,59 @@ test('job creation keeps its form and stable id when storage fails, then retries
   assert.equal(await h.submit({ ...values, name: 'Synthetic job revised' }), true);
   assert.equal(h.ctx.state.jobs.length, 2);
   assert.equal(h.ctx.state.jobs[1].name, 'Synthetic job revised');
+  assert.equal(h.ctx.state.jobs[1].overtimeRate2, 450);
   assert.equal(validateState(h.ctx.state).ok, true);
+});
+
+test('advanced settings display defaults for a legacy profile and persist selections through submit', async t => {
+  const module = await panels();
+  const h = harness(t, module);
+  const oldPreferences = {compact: false, reduceMotion: false, defaultBreakMinutes: 0, defaultStart: '', defaultEnd: '', defaultRouteId: ''};
+  h.ctx.state.settings = {...h.ctx.state.settings, name: 'Synthetic profile', preferences: oldPreferences};
+  const initial = module.renderSettings(h.ctx);
+  assert.match(initial, /<option value="dark" selected>/);
+  assert.match(initial, /name="showTimer" checked/);
+  assert.match(initial, /name="showOverviewChart" checked/);
+  const form = h.nodes['#preferences-form'] = element();
+  module.bindPanels(h.ctx);
+  const values = formData({theme: 'contrast', navigation: 'bottom', startupView: 'kalender', compact: 'on', reduceMotion: 'on', showOverviewActivity: 'on', defaultBreakMinutes: 30, defaultStart: '06:00', defaultEnd: '14:00', defaultRouteId: ''});
+  const NativeFormData = globalThis.FormData;
+  try {
+    globalThis.FormData = class { constructor(currentForm) { assert.equal(currentForm, form); return values; } };
+    form.emit('submit', {currentTarget: form, preventDefault() {}});
+  } finally {
+    globalThis.FormData = NativeFormData;
+  }
+  assert.deepEqual(h.ctx.state.settings.preferences, {
+    ...defaultPreferences(), theme: 'contrast', navigation: 'bottom', startupView: 'kalender', compact: true,
+    reduceMotion: true, showOverviewChart: false, showQuickTools: false, showTimer: false,
+    defaultBreakMinutes: 30, defaultStart: '06:00', defaultEnd: '14:00'
+  });
+  assert.equal(h.ctx.state.settings.name, 'Synthetic profile');
+  assert.equal(h.ctx.saves, 1);
+  assert.equal(validateState(h.ctx.state).ok, true);
+  assert.match(module.renderSettings(h.ctx), /<option value="contrast" selected>/);
+});
+
+test('work rows display tier amounts and a clamp; CSV appends tier details after Note', async t => {
+  const module = await panels();
+  const h = harness(t, module);
+  const job = h.ctx.state.jobs[0];
+  Object.assign(job, {scheme: '5', hourlyRate: 200, overtimeRate: 300, overtimeRate2: 450});
+  const entry = {id: 'synthetic-work', jobId: job.id, date: '2028-03-06', type: 'work', scheme: '5', start: '06:00', end: '16:00', breakMinutes: 0, overtimeTier2Minutes: 60, vehicle: '', route: '', crew: 'Alene', empties: 0, waste: [], extras: [], notes: 'Synthetic note'};
+  h.ctx.state.entries = [entry, {...entry, id: 'synthetic-clamp', date: '2028-03-07', overtimeTier2Minutes: 180}];
+  h.ctx.calcs = calculateAll(h.ctx.state);
+  const html = module.renderWork(h.ctx);
+  assert.match(html, /Sats 1 · 1,60 t\./);
+  assert.match(html, /Sats 2 · 1,00 t\./);
+  assert.match(html, /Sats 2 er begrænset til registreringens overarbejde/);
+  let downloaded;
+  document.createElement = () => ({click() { downloaded = resolveObjectURL(this.href); }});
+  h.act('export-csv');
+  const [header, , monday] = (await downloaded.text()).split('\r\n');
+  assert.equal(header.split(';')[18], '"Note"');
+  assert.match(header, /"Overarbejde sats 1 timer";"Overarbejde sats 1 kr\.";"Overarbejde sats 2 timer";"Overarbejde sats 2 kr\."$/);
+  assert.match(monday, /"Synthetic note";"1,60";"480,00";"1,00";"450,00"$/);
 });
 
 test('editing a single-day untimed PDF plan preserves its date shape and provenance', async t => {

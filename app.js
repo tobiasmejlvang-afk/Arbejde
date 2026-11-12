@@ -24,6 +24,7 @@ const storage={getItem:key=>localStorage.getItem(key),setItem:(key,value)=>local
 let workspaceKey=KEY,modalCleanup,cloudAccount;
 let dataStore=createDataStore(storage,workspaceKey);
 state=dataStore.load();storageProblem=dataStore.error;
+if(!location.hash)view=state.settings.preferences?.startupView||'overblik';
 let pendingInstallPrompt=null,installedThisSession=false;
 const app=document.querySelector('#app'),editor=document.querySelector('#editor');
 function toast(message){const node=document.querySelector('#toast');node.textContent=message;node.classList.add('visible');clearTimeout(toast.timer);toast.timer=setTimeout(()=>node.classList.remove('visible'),4500);}
@@ -74,8 +75,12 @@ function renderDaily(){return renderDailyWorkspace(ctx());}
 function render(){
   if(!nav.some(([id])=>id===view))view='overblik';
   if(jobFilter&&!state.jobs.some(job=>job.id===jobFilter))jobFilter='';
-  document.documentElement.classList.toggle('compact-workspace',Boolean(state.settings.preferences?.compact));
-  document.documentElement.classList.toggle('reduce-motion',Boolean(state.settings.preferences?.reduceMotion));
+  const preferences=state.settings.preferences||{};
+  const root=document.documentElement;
+  root.dataset.theme=preferences.theme||'dark';
+  root.dataset.navigation=preferences.navigation||'auto';
+  root.classList.toggle('compact-workspace',Boolean(preferences.compact));
+  root.classList.toggle('reduce-motion',Boolean(preferences.reduceMotion));
   calcs=calculateAll(state);
   const page={overblik:renderDashboard,daglig:renderDaily,loen:()=>renderWageWorkspace(ctx()),kalender:()=>renderCalendar(ctx()),planimport:()=>renderScheduleImport(ctx()),arbejde:()=>renderWork(ctx()),opret:()=>renderCreate(ctx()),job:()=>renderJobs(ctx()),fravaer:()=>renderAbsenceWorkspace(ctx()),vogntur:()=>renderDirectory(ctx()),ture:()=>renderRoutes(ctx()),statistik:()=>renderStatisticsWorkspace(ctx()),eksport:()=>renderExportWorkspace(ctx()),indstillinger:()=>renderSettings(ctx())}[view]();
   const navItem=([id,art,label])=>`<a href="#${id}" aria-label="${escape(label)}" title="${escape(label)}" ${view===id?'aria-current="page"':''} class="nav-link ${view===id?'active':''}">${brandArt(art,'nav-art')}<span>${label}</span>${id==='opret'?'<kbd>+</kbd>':''}</a>`;
@@ -118,7 +123,31 @@ document.querySelectorAll('[data-timer-action]').forEach(button=>button.onclick=
 document.querySelectorAll('[data-planned-entry]').forEach(button=>button.onclick=()=>openPlannedEntry(state.plans.find(p=>p.id===button.dataset.plannedEntry),button.dataset.planDate));document.querySelectorAll('[data-action="toggle-menu"]').forEach(b=>b.onclick=()=>{menuOpen=!menuOpen;render();});document.querySelector('[data-action="close-menu"]')?.addEventListener('click',()=>{menuOpen=false;render();});document.querySelector('[data-action="install-app"]')?.addEventListener('click',installApp);document.querySelectorAll("[data-height]").forEach(node=>node.style.height=Number(node.dataset.height)+"%");document.querySelectorAll('[data-nav]').forEach(b=>b.onclick=()=>navigate(b.dataset.nav));document.querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>openEntry(b.dataset.edit));document.querySelectorAll('[data-type]').forEach(b=>b.onclick=()=>openEntry(null,{type:b.dataset.type}));document.querySelectorAll('[data-day]').forEach(b=>b.onclick=()=>openEntry(null,{date:b.dataset.day}));document.querySelectorAll('[data-action="new"]').forEach(b=>b.onclick=()=>openEntry());document.querySelector('[data-action="demo"]')?.addEventListener('click',()=>{realState=state;state=demoState();demoMode=true;dataEpoch++;render();});document.querySelector('[data-action="exit-demo"]')?.addEventListener('click',()=>{state=realState||emptyState();demoMode=false;dataEpoch++;render();});document.querySelectorAll('[data-period]').forEach(b=>b.onclick=()=>{periodMode=b.dataset.period;render();});document.querySelector('#overview-job')?.addEventListener('change',e=>{jobFilter=e.target.value;render();});document.querySelectorAll('[data-shift]').forEach(b=>b.onclick=()=>{const direction=Number(b.dataset.shift),range=periodRange();periodDate=direction>0?addDays(range.end,1):addDays(range.start,-1);render();});}
 
 function extraHtml(extra={}){const e={id:uid(),kind:'emptying',minutes:0,paidOvertime:false,...extra};return `<div class="extra-card" data-extra="${escape(e.id)}"><div class="extra-heading"><span class="badge">${e.kind==='task'?'Andet arbejde':'Ekstra tømning'}</span><input type="hidden" name="extra-kind" value="${e.kind}"><button class="icon-button remove-extra" type="button" aria-label="Fjern ekstraopgave">${icon('close',16)}</button></div><div class="form-grid">${field('extra-task',e.kind==='task'?'Arbejdsopgave':'Beskrivelse',e.task,'text','required maxlength="250"')}${field('extra-minutes','Tidsforbrug (min.)',e.minutes,'number','min="1" max="1440" required step="1"')}${field('extra-vehicle','Vogn nr.',e.vehicle,'text','list="vehicle-options" maxlength="60"')}${e.kind==='emptying'?field('extra-forVehicle','Hentes for vogn nr.',e.forVehicle,'text','list="vehicle-options" maxlength="60"'):''}${field('extra-from','Kørsel fra',e.from,'text','maxlength="250"')}${field('extra-to','Kørsel til',e.to,'text','maxlength="250"')}${e.kind==='emptying'?`${field('extra-address','Adresse(r)',e.address,'text','maxlength="500"')}${select('extra-waste','Affaldstype',[['','Vælg affaldstype'],...wastes.map(w=>[w,w])],e.waste)}${field('extra-container','Containerstørrelse',e.container,'text','placeholder="Fx 240 liter" maxlength="60"')}`:''}<label class="check-field full"><input type="checkbox" name="extra-paidOvertime" ${e.paidOvertime?'checked':''}><span>Med overarbejdsbetaling</span></label></div></div>`;}
-function readEntry(form,id){const fd=new FormData(form),type=fd.get('type');return {id:id||uid(),date:fd.get('date'),jobId:fd.get('jobId'),type,restDay:type==='work'&&fd.get('restDay')==='on',scheme:form.elements.scheme?.value||fd.get('scheme')||state.jobs.find(j=>j.id===fd.get('jobId'))?.scheme||'4',start:type==='work'?fd.get('start'):'',end:type==='work'?fd.get('end'):'',breakMinutes:type==='work'?Number(fd.get('breakMinutes')||0):0,vehicle:fd.get('vehicle')||'',route:fd.get('route')||'',crew:fd.get('crew')||'Alene',planId:String(fd.get('planId')||''),timerId:String(fd.get('timerId')||''),driver:String(fd.get('driver')||'').trim(),colleague:String(fd.get('colleague')||'').trim(),empties:type==='work'?Number(fd.get('empties')||0):0,waste:type==='work'?fd.getAll('waste'):[],extras:type==='work'?[...form.querySelectorAll('[data-extra]')].map(node=>{const val=name=>node.querySelector(`[name="extra-${name}"]`)?.value||'';return {id:node.dataset.extra,kind:val('kind'),task:val('task'),minutes:Number(val('minutes')),vehicle:val('vehicle'),forVehicle:val('forVehicle'),from:val('from'),to:val('to'),address:val('address'),waste:val('waste'),container:val('container'),paidOvertime:node.querySelector('[name="extra-paidOvertime"]').checked};}):[],notes:String(fd.get('notes')||'').trim()};}
+function readEntry(form,id){
+  const data=new FormData(form);
+  const type=data.get('type'),work=type==='work';
+  const jobId=data.get('jobId');
+  const extras=work?[...form.querySelectorAll('[data-extra]')].map(node=>{
+    const value=name=>node.querySelector(`[name="extra-${name}"]`)?.value||'';
+    return {
+      id:node.dataset.extra,kind:value('kind'),task:value('task'),minutes:Number(value('minutes')),
+      vehicle:value('vehicle'),forVehicle:value('forVehicle'),from:value('from'),to:value('to'),
+      address:value('address'),waste:value('waste'),container:value('container'),
+      paidOvertime:node.querySelector('[name="extra-paidOvertime"]').checked
+    };
+  }):[];
+  return {
+    id:id||uid(),date:data.get('date'),jobId,type,restDay:work&&data.get('restDay')==='on',
+    scheme:form.elements.scheme?.value||data.get('scheme')||state.jobs.find(job=>job.id===jobId)?.scheme||'4',
+    start:work?data.get('start'):'',end:work?data.get('end'):'',breakMinutes:work?Number(data.get('breakMinutes')||0):0,
+    overtimeTier2Minutes:work?Number(data.get('overtimeTier2Minutes')||0):0,
+    vehicle:data.get('vehicle')||'',route:data.get('route')||'',crew:data.get('crew')||'Alene',
+    planId:String(data.get('planId')||''),timerId:String(data.get('timerId')||''),
+    driver:String(data.get('driver')||'').trim(),colleague:String(data.get('colleague')||'').trim(),
+    empties:work?Number(data.get('empties')||0):0,waste:work?data.getAll('waste'):[],extras,
+    notes:String(data.get('notes')||'').trim()
+  };
+}
 function matchingRoutes(date) {
   const thursday = new Date(`${date}T12:00:00Z`);
   if (!Number.isFinite(thursday.getTime())) return [];
@@ -148,7 +177,7 @@ function openEntry(id = null, preset = {}) {
     vehicle: defaultRoute?.vehicle || state.settings.defaultVehicle || state.vehicles[0] || '',
     route: defaultRoute?.name || state.routes[0] || '',
     crew: 'Alene', driver: state.settings.defaultDriver || '', colleague: '',
-    planId: '', timerId: '', empties: defaultRoute?.empties ?? 0,
+    planId: '', timerId: '', empties: defaultRoute?.empties ?? 0, overtimeTier2Minutes: 0,
     waste: defaultRoute?.waste || [], extras: [], notes: '', photos: [], ...preset, ...existing
   };
   entry.crew = ({alone:'Alene', colleague:'Med kollega', substitute:'Afløser', temp:'Vikar'})[entry.crew] || entry.crew;
@@ -169,6 +198,10 @@ function openEntry(id = null, preset = {}) {
         ${field('end', 'Sluttid', entry.end, 'time', 'required')}
         ${field('breakMinutes', 'Ubetalt pause (min.)', entry.breakMinutes, 'number', 'min="0" max="1440" step="1" required')}
         ${field('empties', 'Antal tømninger', entry.empties, 'number', 'min="0" max="100000" step="1" required')}
+        <label class="field full">Overarbejde på sats 2 (min.)
+          <input name="overtimeTier2Minutes" type="number" min="0" max="1439" step="1" value="${escape(entry.overtimeTier2Minutes ?? 0)}" aria-describedby="overtime-tier-hint">
+          <small id="overtime-tier-hint" class="muted">Angiv minutterne på sats 2 for hver dato. Resten af overarbejdet beregnes på sats 1. Indstil begge satser under Job &amp; kontrakt.</small>
+        </label>
         ${state.routeTemplates?.length ? select('routeTemplate', 'Hent oplysninger fra en gemt tur', routeOptions(date), defaultRoute?.id || '') : ''}
         ${field('vehicle', 'Vogn / arbejdssted', entry.vehicle, 'text', 'list="vehicle-options" maxlength="100"')}
         ${field('route', 'Tur nr. eller navn', entry.route, 'text', 'list="route-options" maxlength="100"')}
@@ -250,7 +283,11 @@ function openEntry(id = null, preset = {}) {
     const weekEntries = others.filter(item => item.jobId === candidate.jobId && item.date >= monday && item.date <= sunday);
     const result = calculateAll({...state, entries:[...weekEntries,candidate]}).find(item => item.entry.id === candidate.id);
     if (!result) return;
-    display.innerHTML = `<div class="entry-preview"><span>Arbejdet<b>${hours(result.actualHours)} t.</b></span><span>Betalte timer<b>${hours(result.paidHours)} t.</b></span><span>Overarbejde<b class="text-amber">${hours(result.overtimeHours)} t.</b></span><span>Est. brutto<b>${result.rateMissing ? 'Udfyld lønsats' : money(result.grossPay)}</b></span></div>`;
+    const breakdown = result.overtimeHours || candidate.overtimeTier2Minutes ? `<div class="overtime-breakdown">
+      <p class="small">Sats 1 <b>${hours(result.overtimeTier1Hours)} t.</b> · Sats 2 <b>${hours(result.overtimeTier2Hours)} t.</b></p>
+      ${result.overtimeTier2Clamped ? '<p class="preview-info">Sats 2 bruges højst for de beregnede overarbejdstimer på registreringen.</p>' : ''}
+    </div>` : '';
+    display.innerHTML = `<div class="entry-preview"><span>Arbejdet<b>${hours(result.actualHours)} t.</b></span><span>Betalte timer<b>${hours(result.paidHours)} t.</b></span><span>Overarbejde<b class="text-amber">${hours(result.overtimeHours)} t.</b></span><span>Est. brutto<b>${result.rateMissing ? 'Udfyld lønsats' : money(result.grossPay)}</b></span></div>${breakdown}`;
   }
   fields.vehicle.addEventListener('change', () => {
     updateVehicleContext();
@@ -329,6 +366,7 @@ function switchWorkspace(accountKey){
   timer.dispose();
   dataStore=createDataStore(storage,workspaceKey);
   state=dataStore.load();storageProblem=dataStore.error;
+  if(!location.hash)view=state.settings.preferences?.startupView||'overblik';
   timer=workspaceTimer(accountKey ? 'arbejde.timer.v1.'+accountKey : 'arbejde.timer.v1');
   timer.reconcile(state.entries);
 }
@@ -337,7 +375,9 @@ function applyCloudState(next){
   if(!canApplyCloud())return false;
   const stored=dataStore.save(next);
   if(!stored.ok)return false;
-  dataEpoch++;state=next;timer.reconcile(state.entries);render();
+  dataEpoch++;state=next;
+  if(!location.hash)view=state.settings.preferences?.startupView||'overblik';
+  timer.reconcile(state.entries);render();
   return true;
 }
 function copyLocalToAccount(){

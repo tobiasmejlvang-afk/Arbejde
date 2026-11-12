@@ -1,8 +1,14 @@
-# Arbejde · Tid & Løn — v3.1.1
+# Arbejde · Tid & Løn — v3.2.0
 
 Personlig dansk app til arbejdstid, renovationsture, akkord, løn og fravær. Version 3 tilføjer lokal PDF-import af arbejdsplaner og en daglig timer. Det orange/grafit-design bruger de leverede logoer og 3D-ikoner samt en lokalt leveret Inter-skrifttype.
 
 Appen gemmer data i browserprofilen. Med en konto under **Indstillinger → Login og synkronisering** synkroniseres gemte data og billeder mellem dine enheder. Kom hurtigt i gang med [START-HER.md](START-HER.md).
+
+## Version 3.2
+
+Under **Job & kontrakt** kan du angive to fulde timesatser for overarbejde. Brug **Overarbejde på sats 2 (min.)** i arbejdsregistreringen til at fordele overarbejdet. Appen bruger højst vagtens beregnede overarbejdsminutter på sats 2. Resten beregnes med sats 1, som fortsat er standard for tidligere registreringer. Fordelingen vises i **Løn & opsparing** og følger med i CSV-eksporten.
+
+Under **Indstillinger → Avancerede indstillinger** kan du vælge tema, menuplacering og startside. Her kan du også tilpasse overblikkets diagram og aktivitet, hurtigværktøjerne og visningen af timeren. En timer i gang kan stadig afsluttes.
 
 ## Version 3.1
 

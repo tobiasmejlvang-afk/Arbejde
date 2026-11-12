@@ -41,10 +41,15 @@ export function money(value) { return new Intl.NumberFormat('da-DK', {style: 'cu
 export function hours(value) { return new Intl.NumberFormat('da-DK', {minimumFractionDigits: 2, maximumFractionDigits: 2}).format(Number(value) || 0); }
 
 export function defaultJob(overrides = {}) {
-  return {id: uid(), name: 'Mit arbejde', employer: '', role: 'Renovationsmedarbejder', employment: '', startDate: '', scheme: '3', hourlyRate: 0, overtimeRate: 0, periodType: 'month', periodAnchor: weekStart(todayISO()), payday: 31, paydayOffset: 7, pensionEmployee: 0, pensionEmployer: 0, holidayPercent: 0, choicePercent: 0, holidayDays: 0, freeHolidayDays: 0, sickPayPercent: 0, notes: '', ...overrides};
+  return {id: uid(), name: 'Mit arbejde', employer: '', role: 'Renovationsmedarbejder', employment: '', startDate: '', scheme: '3', hourlyRate: 0, overtimeRate: 0, overtimeRate2: 0, periodType: 'month', periodAnchor: weekStart(todayISO()), payday: 31, paydayOffset: 7, pensionEmployee: 0, pensionEmployer: 0, holidayPercent: 0, choicePercent: 0, holidayDays: 0, freeHolidayDays: 0, sickPayPercent: 0, notes: '', ...overrides};
 }
+const PREFERENCE_VISIBILITY_KEYS = ['showOverviewChart', 'showOverviewActivity', 'showQuickTools', 'showTimer'];
 export function defaultPreferences() {
-  return {compact: false, defaultBreakMinutes: 0, defaultStart: '06:00', defaultEnd: '14:00', defaultRouteId: '', reduceMotion: false};
+  return {
+    compact: false, defaultBreakMinutes: 0, defaultStart: '06:00', defaultEnd: '14:00', defaultRouteId: '', reduceMotion: false,
+    theme: 'dark', navigation: 'auto', startupView: 'overblik',
+    showOverviewChart: true, showOverviewActivity: true, showQuickTools: true, showTimer: true
+  };
 }
 export function emptyState() {
   const job = defaultJob();
@@ -123,34 +128,48 @@ export function calculateAll(state) {
       const ordinary = Math.min(baseCapacity, Math.max(0, actual - explicitOT));
       baseCapacity = positiveRemainder(baseCapacity - ordinary);
       const guarantee = guaranteed && index === group.entries.length - 1 ? baseCapacity : 0;
-      allocation.set(entry.id, {actualHours: actual / 60, baseHours: (ordinary + guarantee) / 60, overtimeHours: positiveRemainder(actual - ordinary) / 60, guaranteeHours: guarantee / 60, dayIndex: group.dayIndex, nominalHours: norm, extraDay});
+      const overtime = positiveRemainder(actual - ordinary);
+      const requestedTier2 = entry.overtimeTier2Minutes ?? 0;
+      const tier2 = Math.min(requestedTier2, overtime);
+      allocation.set(entry.id, {
+        actualHours: actual / 60, baseHours: (ordinary + guarantee) / 60, overtimeHours: overtime / 60,
+        overtimeTier1Hours: (overtime - tier2) / 60, overtimeTier2Hours: tier2 / 60,
+        overtimeTier2Clamped: positiveRemainder(requestedTier2 - tier2) > 0,
+        guaranteeHours: guarantee / 60, dayIndex: group.dayIndex, nominalHours: norm, extraDay
+      });
     }
   }
   return sorted.map(entry => {
     const job = jobs.get(entry.jobId);
     const scheme = entry.scheme || job?.scheme || '3';
-    let calculated = allocation.get(entry.id) || {actualHours: 0, baseHours: 0, overtimeHours: 0, guaranteeHours: 0, dayIndex: null, nominalHours: dailyNorm(scheme, entry.date), extraDay: false};
+    let calculated = allocation.get(entry.id) || {
+      actualHours: 0, baseHours: 0, overtimeHours: 0, overtimeTier1Hours: 0, overtimeTier2Hours: 0,
+      overtimeTier2Clamped: false, guaranteeHours: 0, dayIndex: null, nominalHours: dailyNorm(scheme, entry.date), extraDay: false
+    };
     if (entry.type === 'sick') calculated = {...calculated, baseHours: calculated.nominalHours * (Number(job?.sickPayPercent) || 0) / 100};
     const basePay = round(calculated.baseHours * (Number(job?.hourlyRate) || 0));
-    const overtimePay = round(calculated.overtimeHours * (Number(job?.overtimeRate) || 0));
+    const overtimeTier1Pay = round(calculated.overtimeTier1Hours * (Number(job?.overtimeRate) || 0));
+    const overtimeTier2Pay = round(calculated.overtimeTier2Hours * (Number(job?.overtimeRate2) || 0));
+    const overtimePay = round(overtimeTier1Pay + overtimeTier2Pay);
     const grossPay = round(basePay + overtimePay);
     const missingRates = [];
     if (calculated.baseHours > 0 && !(job?.hourlyRate > 0)) missingRates.push('hourlyRate');
-    if (calculated.overtimeHours > 0 && !(job?.overtimeRate > 0)) missingRates.push('overtimeRate');
+    if (calculated.overtimeTier1Hours > 0 && !(job?.overtimeRate > 0)) missingRates.push('overtimeRate');
+    if (calculated.overtimeTier2Hours > 0 && !(job?.overtimeRate2 > 0)) missingRates.push('overtimeRate2');
     // Money is rounded per entry to øre, totals sum those amounts; hours stay unrounded
     // for calculations. Vacation and free holiday consume days but assume no wage.
-    return {entry, job, ...calculated, paidHours: calculated.baseHours + calculated.overtimeHours, basePay, overtimePay, grossPay, pensionEmployee: round(grossPay * (Number(job?.pensionEmployee) || 0) / 100), pensionEmployer: round(grossPay * (Number(job?.pensionEmployer) || 0) / 100), choice: round(grossPay * (Number(job?.choicePercent) || 0) / 100), holidayAccrual: round(grossPay * (Number(job?.holidayPercent) || 0) / 100), rateMissing: missingRates.length > 0, missingRates};
+    return {entry, job, ...calculated, paidHours: calculated.baseHours + calculated.overtimeHours, basePay, overtimePay, overtimeTier1Pay, overtimeTier2Pay, grossPay, pensionEmployee: round(grossPay * (Number(job?.pensionEmployee) || 0) / 100), pensionEmployer: round(grossPay * (Number(job?.pensionEmployer) || 0) / 100), choice: round(grossPay * (Number(job?.choicePercent) || 0) / 100), holidayAccrual: round(grossPay * (Number(job?.holidayPercent) || 0) / 100), rateMissing: missingRates.length > 0, missingRates};
   });
 }
 export function summarize(rows) {
-  const fields = ['actualHours', 'baseHours', 'overtimeHours', 'paidHours', 'basePay', 'overtimePay', 'grossPay', 'pensionEmployee', 'pensionEmployer', 'choice', 'holidayAccrual', 'guaranteeHours'];
+  const fields = ['actualHours', 'baseHours', 'overtimeHours', 'overtimeTier1Hours', 'overtimeTier2Hours', 'paidHours', 'basePay', 'overtimePay', 'overtimeTier1Pay', 'overtimeTier2Pay', 'grossPay', 'pensionEmployee', 'pensionEmployer', 'choice', 'holidayAccrual', 'guaranteeHours'];
   const result = Object.fromEntries(fields.map(field => {
     if (field.endsWith('Hours')) return [field, round(rows.reduce((sum, row) => sum + (row[field] || 0), 0), 4)];
     // Each registration already rounds to øre. Sum those whole units exactly.
     const totalOre = rows.reduce((sum, row) => sum + Math.round((row[field] || 0) * 100), 0);
     return [field, totalOre / 100];
   }));
-  return {...result, days: new Set(rows.map(row => row.entry.date)).size, workDays: new Set(rows.filter(row => row.entry.type === 'work').map(row => `${row.entry.jobId}/${row.entry.date}`)).size, holidayDays: rows.filter(row => row.entry.type === 'holiday').length, freeHolidayDays: rows.filter(row => row.entry.type === 'freeHoliday').length, sickDays: rows.filter(row => row.entry.type === 'sick').length, absenceDays: rows.filter(row => row.entry.type === 'absence').length, empties: rows.reduce((sum, row) => sum + (row.entry.type === 'work' ? Number(row.entry.empties) || 0 : 0), 0), rateMissing: rows.some(row => row.rateMissing), entries: rows.length};
+  return {...result, days: new Set(rows.map(row => row.entry.date)).size, workDays: new Set(rows.filter(row => row.entry.type === 'work').map(row => `${row.entry.jobId}/${row.entry.date}`)).size, holidayDays: rows.filter(row => row.entry.type === 'holiday').length, freeHolidayDays: rows.filter(row => row.entry.type === 'freeHoliday').length, sickDays: rows.filter(row => row.entry.type === 'sick').length, absenceDays: rows.filter(row => row.entry.type === 'absence').length, empties: rows.reduce((sum, row) => sum + (row.entry.type === 'work' ? Number(row.entry.empties) || 0 : 0), 0), rateMissing: rows.some(row => row.rateMissing), overtimeTier2ClampedEntries: rows.filter(row => row.overtimeTier2Clamped).length, entries: rows.length};
 }
 
 function interval(entry) {
@@ -201,6 +220,11 @@ export function validateEntry(entry, state, skipConflicts = false) {
   if (!job) errors.push('Vælg et eksisterende job.');
   if (!ENTRY_TYPES.includes(entry.type)) errors.push('Vælg en gyldig registreringstype.');
   if (own(entry, 'restDay') && typeof entry.restDay !== 'boolean') errors.push('Hviledag skal være markeret som ja eller nej.');
+  if (own(entry, 'overtimeTier2Minutes')) {
+    const minutes = entry.overtimeTier2Minutes;
+    if (!Number.isInteger(minutes) || minutes < 0 || minutes > 1439) errors.push('Overarbejde på sats 2 skal være et helt antal minutter mellem 0 og 1.439.');
+    else if (minutes > 0 && entry.type !== 'work') errors.push('Overarbejde på sats 2 kan kun fordeles på en arbejdsdag.');
+  }
   if (own(entry, 'photos')) errors.push(...validatePhotoRefs(entry.photos));
   for (const key of ['driver', 'colleague', 'planId', 'timerId']) if (own(entry, key) && (typeof entry[key] !== 'string' || entry[key].length > 200)) errors.push('Chauffør, kollega og referencer skal være tekst på højst 200 tegn.');
   if (!['3', '4', '5'].includes(entry.scheme || job?.scheme)) errors.push('Vælg en gyldig arbejdsuge.');
@@ -240,13 +264,13 @@ export function validateEntry(entry, state, skipConflicts = false) {
 
 // Import only recognized keys and primitives. Unknown keys are rejected, including
 // prototype-like names, so backups cannot smuggle unrelated application state.
-const JOB_KEYS = ['id', 'name', 'employer', 'role', 'employment', 'startDate', 'scheme', 'hourlyRate', 'overtimeRate', 'periodType', 'periodAnchor', 'payday', 'paydayOffset', 'pensionEmployee', 'pensionEmployer', 'holidayPercent', 'choicePercent', 'holidayDays', 'freeHolidayDays', 'sickPayPercent', 'notes'];
-const ENTRY_KEYS = ['id', 'date', 'jobId', 'type', 'scheme', 'start', 'end', 'breakMinutes', 'vehicle', 'route', 'crew', 'driver', 'colleague', 'planId', 'timerId', 'empties', 'waste', 'extras', 'notes', 'restDay', 'photos'];
+const JOB_KEYS = ['id', 'name', 'employer', 'role', 'employment', 'startDate', 'scheme', 'hourlyRate', 'overtimeRate', 'overtimeRate2', 'periodType', 'periodAnchor', 'payday', 'paydayOffset', 'pensionEmployee', 'pensionEmployer', 'holidayPercent', 'choicePercent', 'holidayDays', 'freeHolidayDays', 'sickPayPercent', 'notes'];
+const ENTRY_KEYS = ['id', 'date', 'jobId', 'type', 'scheme', 'start', 'end', 'breakMinutes', 'vehicle', 'route', 'crew', 'driver', 'colleague', 'planId', 'timerId', 'empties', 'waste', 'extras', 'notes', 'restDay', 'photos', 'overtimeTier2Minutes'];
 const EXTRA_KEYS = ['id', 'kind', 'task', 'minutes', 'vehicle', 'forVehicle', 'from', 'to', 'address', 'waste', 'container', 'paidOvertime'];
 const PLAN_KEYS = ['id', 'date', 'from', 'to', 'weekdays', 'jobId', 'scheme', 'title', 'start', 'end', 'vehicle', 'route', 'notes', 'driver', 'colleague', 'crew', 'people', 'kind', 'source'];
 const PLAN_SOURCE_KEYS = ['type', 'fileName', 'fileHash', 'page', 'row', 'importedAt', 'week', 'year'];
 const ROUTE_TEMPLATE_KEYS = ['id', 'name', 'weekParity', 'weekday', 'vehicle', 'waste', 'empties'];
-const PREFERENCE_KEYS = ['compact', 'defaultBreakMinutes', 'defaultStart', 'defaultEnd', 'defaultRouteId', 'reduceMotion'];
+const PREFERENCE_KEYS = ['compact', 'defaultBreakMinutes', 'defaultStart', 'defaultEnd', 'defaultRouteId', 'reduceMotion', 'theme', 'navigation', 'startupView', ...PREFERENCE_VISIBILITY_KEYS];
 const TEXT_KEYS = ['id', 'name', 'employer', 'role', 'employment', 'startDate', 'scheme', 'periodType', 'periodAnchor', 'notes', 'date', 'jobId', 'type', 'start', 'end', 'vehicle', 'route', 'crew', 'driver', 'colleague', 'kind', 'task', 'forVehicle', 'from', 'to', 'address', 'container', 'title'];
 function schema(object, allowed, label, errors) {
   if (!record(object)) { errors.push(`${label}: ugyldigt objekt.`); return false; }
@@ -275,6 +299,7 @@ export function validateState(data) {
     if (!['3', '4', '5'].includes(job.scheme)) errors.push(`${label}: ugyldig arbejdsuge.`);
     if (!['month', '14days'].includes(job.periodType)) errors.push(`${label}: ugyldig lønperiode.`);
     for (const key of ['hourlyRate', 'overtimeRate', 'pensionEmployee', 'pensionEmployer', 'holidayPercent', 'choicePercent', 'holidayDays', 'freeHolidayDays', 'sickPayPercent']) if (!numeric(job[key]) || job[key] < 0 || job[key] > (key.toLowerCase().includes('rate') ? 100000 : key.endsWith('Days') ? 366 : 100)) errors.push(`${label}: ugyldig værdi for ${key}.`);
+    if (own(job, 'overtimeRate2') && (!numeric(job.overtimeRate2) || job.overtimeRate2 < 0 || job.overtimeRate2 > 100000)) errors.push(`${label}: overarbejdssats 2 skal være mellem 0 og 100.000 kr. pr. time.`);
     if (!Number.isInteger(job.payday) || job.payday < 1 || job.payday > 31 || !Number.isInteger(job.paydayOffset) || job.paydayOffset < 0 || job.paydayOffset > 60) errors.push(`${label}: ugyldig lønudbetalingsdag.`);
   }
   for (const [index, entry] of data.entries.entries()) {
@@ -356,6 +381,10 @@ export function validateState(data) {
     if (own(data.settings, 'preferences') && schema(data.settings.preferences, PREFERENCE_KEYS, 'Personlige standardvalg', errors)) {
       const preferences = data.settings.preferences;
       if (typeof preferences.compact !== 'boolean' || typeof preferences.reduceMotion !== 'boolean') errors.push('Kompakt visning og mindre bevægelse skal være valgt til eller fra.');
+      if (own(preferences, 'theme') && !['dark', 'light', 'contrast'].includes(preferences.theme)) errors.push('Vælg et gyldigt tema.');
+      if (own(preferences, 'navigation') && !['auto', 'sidebar', 'bottom'].includes(preferences.navigation)) errors.push('Vælg en gyldig navigation.');
+      if (own(preferences, 'startupView') && !['overblik', 'daglig', 'kalender', 'arbejde'].includes(preferences.startupView)) errors.push('Vælg en gyldig startside.');
+      if (PREFERENCE_VISIBILITY_KEYS.some(key => own(preferences, key) && typeof preferences[key] !== 'boolean')) errors.push('Visningsvalg skal være valgt til eller fra.');
       const breakMinutes = preferences.defaultBreakMinutes;
       if (!Number.isInteger(breakMinutes) || breakMinutes < 0 || breakMinutes > 1439) errors.push('Standardpausen skal være et helt tal mellem 0 og 1.439 minutter.');
       if (preferences.defaultStart !== '' || preferences.defaultEnd !== '') {

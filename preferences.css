@@ -1,0 +1,251 @@
+@media screen {
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f4f0eb;
+  --panel: #fffcf8;
+  --panel-2: #eee6dc;
+  --border: #a99987;
+  --text: #292119;
+  --muted: #645546;
+  --accent: #a0440c;
+  --accent-dark: #813407;
+  --green: #305e27;
+  --amber: #91400b;
+  --blue: #305a75;
+  --hover-surface: #e8ddce;
+  --warning-surface: #fff0d7;
+  --danger-text: #8b2424;
+  --on-accent: #fff;
+}
+
+:root[data-theme="contrast"] {
+  color-scheme: dark;
+  --bg: #0a0a0a;
+  --panel: #131313;
+  --panel-2: #242424;
+  --border: #a8a8a8;
+  --text: #fff;
+  --muted: #ddd;
+  --accent: #ffba61;
+  --accent-dark: #ffd9a5;
+  --green: #b9ec8d;
+  --amber: #ffd9a5;
+  --blue: #9fdaff;
+  --hover-surface: #393939;
+  --warning-surface: #322316;
+  --danger-text: #ffb3b3;
+  --on-accent: #18100a;
+}
+
+:root:is([data-theme="light"], [data-theme="contrast"]) body {
+  background: var(--bg);
+  color: var(--text);
+}
+
+:root:is([data-theme="light"], [data-theme="contrast"]) :is(
+  .card, .create-card, .dialog-heading, .dialog-footer, .extra-card,
+  .today-plan, .schedule-document, .schedule-review, .schedule-row, .entry-photo-card
+) {
+  background: var(--panel);
+  color: var(--text);
+  border-color: var(--border);
+  box-shadow: none;
+}
+
+:root:is([data-theme="light"], [data-theme="contrast"]) #editor {
+  background: var(--panel);
+  color: var(--text);
+  border-color: var(--border);
+}
+
+:root:is([data-theme="light"], [data-theme="contrast"]) :is(
+  .hero-details, .pay-lines, .segmented, .calendar-cell, .bar-track, .entry-preview,
+  .preview-info, .preview-warning, .schedule-review-table th, .data-table th, .data-table tfoot td
+) {
+  background: var(--panel-2);
+  color: var(--text);
+  border-color: var(--border);
+}
+
+:root:is([data-theme="light"], [data-theme="contrast"]) :is(
+  main, #editor
+) :is(
+  h1, h2, h3, h4, strong, b, .field, .stat-top, .stat-value, .table-title,
+  .data-table td, .calendar-day-number, .payday-date, .gross-amount, .week-total
+) {
+  color: var(--text);
+}
+
+:root:is([data-theme="light"], [data-theme="contrast"]) :is(main, #editor) :is(
+  p, .muted, .field-hint, .stat-foot, .hero-details, .chart-axis, .chart-legend, .bar-label,
+  .activity-strip, .activity-strip button, .settings-copy, .data-table td > small, .footnote,
+  .job-details dt, .job-details dd, .gross-lines > span, .gross-lines small, .pay-lines > div > span
+) {
+  color: var(--muted);
+}
+
+:root:is([data-theme="light"], [data-theme="contrast"]) :is(main, #editor) :is(
+  .text-accent, .accent-text, .text-amber, .section-label, .surface-label, .payday-label,
+  .hero-copy h2 span, .text-button, .create-card-footer
+) {
+  color: var(--accent);
+}
+
+:root:is([data-theme="light"], [data-theme="contrast"]) :is(main, #editor) :is(
+  input:not([type="checkbox"], [type="radio"]), select, textarea, .button.secondary,
+  .button.subtle, .icon-button, .segmented button, .badge, .source-badge, .calendar-chip
+) {
+  background: var(--panel-2);
+  border-color: var(--border);
+  color: var(--text);
+  box-shadow: none;
+}
+
+:root:is([data-theme="light"], [data-theme="contrast"]) :is(main, #editor) :is(
+  .button.primary, .segmented button.active
+) {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+  box-shadow: none;
+}
+
+:root:is([data-theme="light"], [data-theme="contrast"]) :is(main, #editor) :is(
+  .button.secondary, .button.subtle, .icon-button, .calendar-chip, .create-card, .entry-waste label
+):hover {
+  background: var(--hover-surface);
+}
+
+:root:is([data-theme="light"], [data-theme="contrast"]) :is(main, #editor) :is(
+  .notice, .preview-warning, .entry-error, .error-notice
+) {
+  background: var(--warning-surface);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+:root:is([data-theme="light"], [data-theme="contrast"]) :is(main, #editor) :is(
+  .danger, .error-notice, .entry-error
+) {
+  color: var(--danger-text);
+}
+
+:root:is([data-theme="light"], [data-theme="contrast"]) :is(main, #editor) :focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+:root[data-theme="light"] :is(.hero-art img, .wage-note-art, .directory-shortcut-art) {
+  mix-blend-mode: normal;
+}
+
+:root[data-theme="contrast"] :is(.sidebar, .topbar, .mobile-nav, .sidebar-bottom) {
+  background: var(--panel);
+  border-color: var(--border);
+}
+
+:root[data-theme="contrast"] :is(.nav-link, .mobile-nav > a, .mobile-nav > button, .breadcrumb, .saved-indicator, .topbar-date) {
+  color: var(--text);
+}
+
+:root[data-theme="contrast"] :is(.nav-link.active, .mobile-nav .active) {
+  background: var(--panel-2);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+}
+
+/* Bottom navigation uses a drawer for destinations outside the quick links. */
+:root[data-navigation="bottom"] .main-shell {
+  margin-left: 0;
+  padding-bottom: max(88px, calc(76px + env(safe-area-inset-bottom)));
+}
+
+:root[data-navigation="bottom"] :is(.topbar-brand, .menu-toggle) { display: inline-grid; }
+:root[data-navigation="bottom"] .topbar-brand img { width: min(220px, 36vw); height: 52px; object-fit: contain; }
+:root[data-navigation="bottom"] .breadcrumb { display: none; }
+
+:root[data-navigation="bottom"] .mobile-nav {
+  display: flex;
+  justify-content: center;
+  position: fixed;
+  inset: auto 0 0;
+  gap: 4px;
+  min-height: 73px;
+  padding: 5px 6px max(6px, env(safe-area-inset-bottom));
+  background: #262728;
+  border-top: 1px solid #8b633f8c;
+  z-index: 60;
+}
+
+:root[data-navigation="bottom"] .mobile-nav :is(a, button) {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  flex: 0 1 120px;
+  min-width: 0;
+  min-height: 56px;
+  padding: 4px 1px;
+  border-radius: 13px;
+  font-size: 11px;
+  color: #e4c6a5;
+}
+
+:root[data-navigation="bottom"] .mobile-nav .brand-art { width: 30px; height: 30px; border-radius: 8px; }
+:root[data-navigation="bottom"] .mobile-nav .active { background: #694626; color: #ffdfa9; }
+
+:root[data-navigation="bottom"] .sidebar {
+  inset: 0 auto 0 0;
+  width: min(300px, calc(100vw - 44px));
+  height: auto;
+  padding: 18px 12px 0;
+  z-index: 80;
+  visibility: hidden;
+  transform: translateX(-100%);
+}
+
+:root[data-navigation="bottom"] .drawer-open .sidebar { visibility: visible; transform: none; }
+:root[data-navigation="bottom"] .drawer-open .drawer-scrim {
+  display: block;
+  position: fixed;
+  inset: 0;
+  background: #0009;
+  border: 0;
+  z-index: 75;
+}
+
+:root[data-navigation="bottom"] .sidebar .nav-link {
+  flex-direction: row;
+  justify-content: flex-start;
+  min-height: 44px;
+  padding: 5px 8px;
+}
+
+:root[data-navigation="bottom"] .sidebar .nav-link > span {
+  display: block;
+  max-width: none;
+  font-size: 13px;
+  text-align: left;
+}
+
+:root[data-navigation="bottom"] #toast { bottom: max(88px, calc(76px + env(safe-area-inset-bottom))); }
+
+/* The side menu remains available on small screens via the top-bar button. */
+:root[data-navigation="sidebar"] .mobile-nav { display: none; }
+:root[data-navigation="sidebar"] .main-shell { padding-bottom: 0; }
+
+.dashboard-main.single-column, .dashboard-lower.single-column { grid-template-columns: minmax(0, 1fr); }
+#preferences-form { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+.overtime-breakdown { display: grid; gap: 5px; margin-top: 10px; }
+.overtime-breakdown p { margin: 0; }
+.gross-lines { flex-wrap: wrap; column-gap: 24px; row-gap: 16px; }
+
+@media (max-width: 540px) {
+  #preferences-form { grid-template-columns: minmax(0, 1fr); }
+  :root[data-navigation="bottom"] .mobile-nav :is(a, button) { font-size: 10px; }
+}
+
+@media print {
+  :root[data-navigation] .mobile-nav { display: none; }
+  :root[data-navigation] .main-shell { margin: 0; padding: 0; }
+}

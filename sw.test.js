@@ -1,20 +1,19 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { access, readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { runInNewContext } from 'node:vm';
 
 const source = await readFile(new URL('./sw.js', import.meta.url), 'utf8');
 const scope = 'https://example.test/Arbejde/';
-const previous = 'arbejde-/Arbejde/-v6-20261107';
-const current = 'arbejde-/Arbejde/-v7-20261107';
-const otherScope = 'arbejde-/other/-v7-20261107';
+const previous = 'arbejde-/Arbejde/-v7-20261107';
+const otherScope = 'arbejde-/other/-v1-20261029';
 
 function createWorker() {
   const handlers = new Map();
   const stores = new Map([[previous, new Map()], [otherScope, new Map()]]);
   const networkRequests = [];
   let online = true;
-  let release = '3.1.1';
+  let release = 'installed';
   let failedPath = '';
   let claims = 0;
   let skips = 0;
@@ -73,6 +72,10 @@ function createWorker() {
       handlers.get('fetch')({ request, respondWith: promise => { result = promise; } });
       return result;
     },
+    get snapshot() {
+      const current = [...stores.keys()].find(key => key !== previous && key.startsWith('arbejde-/Arbejde/-'));
+      return stores.get(current);
+    },
     get claims() { return claims; },
     get skips() { return skips; }
   };
@@ -82,15 +85,15 @@ test('a complete install snapshot keeps the shell and scripts on one release', a
   const worker = createWorker();
   await worker.dispatch('install');
   const precached = worker.networkRequests.length;
-  worker.network({ version: '3.1.2', fail: '/Arbejde/app.js' });
-  assert.match(await (await worker.fetch('?opened=1', { navigate: true })).text(), /^3\.1\.1:.*index\.html$/);
-  assert.match(await (await worker.fetch('app.js')).text(), /^3\.1\.1:.*app\.js$/);
+  worker.network({ version: 'next-release', fail: '/Arbejde/app.js' });
+  assert.match(await (await worker.fetch('?opened=1', { navigate: true })).text(), /^installed:.*index\.html$/);
+  assert.match(await (await worker.fetch('app.js')).text(), /^installed:.*app\.js$/);
   worker.network({ available: false });
-  for (const path of ['manifest.webmanifest?v=3.1.1', 'icon-192.png?v=3.1.1', 'photos.js', 'photos.css', 'assets/supabase/supabase.js', 'assets/pdfjs/pdf.worker.min.mjs']) {
-    assert.match(await (await worker.fetch(path)).text(), /^3\.1\.1:/);
+  for (const path of ['manifest.webmanifest?v=installed', 'icon-192.png?v=installed', 'preferences.css', 'photos.js', 'photos.css', 'assets/supabase/supabase.js', 'assets/pdfjs/pdf.worker.min.mjs']) {
+    assert.match(await (await worker.fetch(path)).text(), /^installed:/);
   }
   assert.equal(worker.networkRequests.length, precached);
-  for (const url of worker.stores.get(current).keys()) await readFile(new URL(url.slice(scope.length), import.meta.url));
+  await Promise.all([...worker.snapshot.keys()].map(url => access(new URL(url.slice(scope.length), import.meta.url))));
 });
 
 test('install keeps the prior release until activation and never skips waiting', async () => {
@@ -102,7 +105,7 @@ test('install keeps the prior release until activation and never skips waiting',
   await worker.dispatch('activate');
   assert.equal(worker.claims, 1);
   assert.equal(worker.stores.has(previous), false);
-  assert.ok(worker.stores.has(current));
+  assert.ok(worker.snapshot);
   assert.ok(worker.stores.has(otherScope));
 });
 
@@ -111,7 +114,7 @@ test('a failed precache leaves the previous release available', async () => {
   worker.network({ fail: '/Arbejde/app.js' });
   await assert.rejects(worker.dispatch('install'), /Precache failed/);
   assert.ok(worker.stores.has(previous));
-  assert.equal(worker.stores.get(current).size, 0);
+  assert.equal(worker.snapshot.size, 0);
   assert.equal(worker.claims, 0);
 });
 
