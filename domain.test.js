@@ -176,6 +176,159 @@ test('overtime splits between full hourly rates and keeps ordinary hours intact'
   assert.equal(sum.overtimeTier2Pay, 450);
   assert.equal(sum.overtimeTier2ClampedEntries, 0);
 });
+test('ATL fixed hours use the last hour before and first three after the normal shift at rate one', () => {
+  const state = fixture('5');
+  Object.assign(state.jobs[0], {overtimeRule: 'atlFixed', hourlyRate: 200, overtimeRate: 240, overtimeRate2: 310});
+  state.entries = [work('2026-11-09', {scheme: '5', start: '05:00', end: '17:24', normalStart: '06:00', normalEnd: '13:24'})];
+  assert.equal(validateState(state).ok, true);
+  const [row] = calculateAll(state);
+  assert.equal(row.baseHours, 7.4);
+  assert.equal(row.overtimeTier1Hours, 4);
+  assert.equal(row.overtimeTier2Hours, 1);
+  assert.equal(row.overtimeTier1Pay, 960);
+  assert.equal(row.overtimeTier2Pay, 310);
+  assert.equal(row.overtimeAllocationMode, 'automatic');
+  assert.deepEqual(row.overtimeWarnings, []);
+  state.entries[0].overtimeTier2Minutes = 0;
+  const [manual] = calculateAll(state);
+  assert.equal(manual.overtimeTier1Hours, 5);
+  assert.equal(manual.overtimeTier2Hours, 0);
+  assert.equal(manual.overtimeAllocationMode, 'manual');
+});
+test('early ATL work counts as overtime even when total work is below its accord norm', () => {
+  const state = fixture('4');
+  state.jobs[0].overtimeRule = 'atlFixed';
+  state.entries = [work('2026-11-09', {scheme: '4', start: '04:30', end: '12:00', normalStart: '06:00', normalEnd: '15:15'})];
+  const [row] = calculateAll(state);
+  assert.equal(row.actualHours, 7.5);
+  assert.equal(row.baseHours, 9.25);
+  assert.equal(row.guaranteeHours, 3.25);
+  assert.equal(row.overtimeTier1Hours, 1.5);
+  assert.equal(row.overtimeTier2Hours, 0);
+  assert.equal(row.overtimeAllocationMode, 'needsReview');
+  assert.match(row.overtimeWarnings.join(' '), /bekræftes/);
+});
+test('ATL splits an overnight shift by Sunday and shares one normal date across split shifts', () => {
+  const state = fixture('4');
+  state.jobs[0].overtimeRule = 'atlFixed';
+  state.jobs[0].overtimeRate2 = 450;
+  const schedule = {scheme: '4', normalDate: '2026-11-14', normalStart: '20:00', normalEnd: '05:15'};
+  state.entries = [work('2026-11-14', {...schedule, start: '20:00', end: '00:00'}), work('2026-11-15', {...schedule, start: '00:00', end: '05:15'})];
+  assert.equal(validateState(state).ok, true);
+  const rows = calculateAll(state);
+  assert.deepEqual(rows.map(row => row.dayIndex), [1, 1]);
+  assert.equal(rows[1].overtimeTier2Hours, 5.25);
+  assert.equal(rows[1].overtimeTier1Hours, 0);
+  assert.equal(summarize(rows).baseHours, 9.25);
+  assert.equal(summarize(rows).workDays, 1);
+  assert.equal(validateState({...state, entries: [state.entries[0], {...state.entries[1], normalEnd: '06:00'}]}).ok, false);
+});
+test('ATL uses rate two on Sundays, official holidays, and the agreement’s eves', () => {
+  for (const date of ['2026-11-15', '2026-04-02', '2026-04-03', '2026-04-06', '2026-05-14', '2026-05-25', '2026-12-25', '2026-12-26', '2027-01-01', '2023-05-05']) {
+    const state = fixture('4');
+    state.jobs[0].overtimeRule = 'atlFixed';
+    state.entries = [work(date, {scheme: '4', start: '06:00', end: '07:00', normalStart: '06:00', normalEnd: '15:15'})];
+    const [row] = calculateAll(state);
+    assert.equal(row.baseHours, 0, date);
+    assert.equal(row.overtimeTier2Hours, 1, date);
+    assert.equal(row.dayIndex, null, date);
+  }
+  for (const date of ['2026-12-24', '2026-12-31']) {
+    const state = fixture('5');
+    state.jobs[0].overtimeRule = 'atlFixed';
+    state.entries = [work(date, {scheme: '5', start: '05:00', end: '07:00', normalStart: '06:00', normalEnd: '13:24'})];
+    const [row] = calculateAll(state);
+    assert.equal(row.overtimeTier1Hours, 1);
+    assert.equal(row.overtimeTier2Hours, 1);
+  }
+  const state = fixture('5');
+  state.jobs[0].overtimeRule = 'atlFixed';
+  state.entries = [work('2026-05-01', {scheme: '5', start: '11:00', end: '13:00', normalStart: '06:00', normalEnd: '13:00'}), work('2026-05-02', {scheme: '5', restDay: true, start: '06:00', end: '08:00', normalStart: '06:00', normalEnd: '13:24'}), work('2026-05-01', {id:'before-noon', scheme: '5', start: '06:00', end: '10:00', normalStart: '06:00', normalEnd: '13:00'})];
+  const [beforeNoon, afterNoon, saturday] = calculateAll(state);
+  assert.equal(beforeNoon.overtimeHours, 0);
+  assert.equal(afterNoon.overtimeTier1Hours, 1);
+  assert.equal(afterNoon.overtimeTier2Hours, 0);
+  assert.equal(afterNoon.overtimeAllocationMode, 'needsReview');
+  assert.equal(saturday.overtimeTier2Hours, 0);
+  state.entries = [work('2025-05-16', {scheme: '5', start: '06:00', end: '13:00', normalStart: '06:00', normalEnd: '13:00'})];
+  assert.equal(calculateAll(state)[0].overtimeHours, 0, 'Store Bededag is an ordinary day since 2024');
+});
+test('ATL reports an unknown pause location and preserves an older manually allocated entry', () => {
+  const state = fixture('5');
+  Object.assign(state.jobs[0], {overtimeRule: 'atlFixed', overtimeRate2: 450});
+  state.entries = [
+    work('2026-11-09', {scheme: '5', start: '06:00', end: '17:24', normalStart: '06:00', normalEnd: '13:24', breakMinutes: 30}),
+    work('2026-11-10', {scheme: '5', start: '06:00', end: '15:00', overtimeTier2Minutes: 30})
+  ];
+  const [timed, legacy] = calculateAll(state);
+  assert.equal(timed.actualHours, 10.9);
+  assert.equal(timed.overtimeTier1Hours, 3);
+  assert.equal(timed.overtimeTier2Hours, 0.5);
+  assert.equal(timed.overtimeAllocationMode, 'needsReview');
+  assert.match(timed.overtimeWarnings.join(' '), /Pausens placering/);
+  near(legacy.overtimeTier1Hours, 1.1);
+  assert.equal(legacy.overtimeTier2Hours, 0.5);
+  assert.match(legacy.overtimeWarnings.join(' '), /Normale start-/);
+  assert.equal(summarize([timed, legacy]).overtimeReviewEntries, 2);
+  for (const patch of [{normalStart: '06:00'}, {normalStart: '06:00', normalEnd: '06:00'}, {normalStart: '06:00', normalEnd: '13:24', normalDate: '2026-11-12'}]) {
+    assert.ok(validateEntry({...state.entries[1], ...patch}, state).length > 0);
+  }
+});
+test('a known unpaid pause after midnight is deducted from the overtime interval it overlaps', () => {
+  const state = fixture('5');
+  state.jobs[0].overtimeRule = 'atlFixed';
+  const shift = work('2026-11-09', {scheme: '5', start: '21:00', end: '08:24', normalStart: '21:00', normalEnd: '04:24', breakMinutes: 45, breakStart: '07:00'});
+  state.entries = [shift];
+  assert.equal(validateState(state).ok, true);
+  const [row] = calculateAll(state);
+  assert.equal(row.baseHours, 7.4);
+  assert.equal(row.overtimeTier1Hours, 2.6);
+  assert.equal(row.overtimeTier2Hours, 0.65);
+  assert.equal(row.overtimeAllocationMode, 'automatic');
+  assert.deepEqual(row.overtimeWarnings, []);
+  assert.ok(validateEntry({...shift, breakStart: '08:00'}, state).some(error => error.includes('inden for vagten')));
+  assert.equal(validateState({...state, entries: [{...shift, breakStart: null}]}).ok, true);
+});
+test('normal job defaults do not modify historical manual registrations and support blank values', () => {
+  const state = fixture('5');
+  Object.assign(state.jobs[0], {overtimeRule: 'atlFixed', normalStart: '08:00', normalEnd: '15:24'});
+  state.entries = [
+    work('2026-11-09', {scheme: '5', start: '06:00', end: '13:00', overtimeTier2Minutes: 0}),
+    work('2026-11-10', {scheme: '5', start: '06:00', end: '13:00', restDay: true, overtimeTier2Minutes: 30}),
+    work('2026-11-15', {scheme: '5', start: '06:00', end: '07:00', normalStart: null, normalEnd: null, normalDate: null})
+  ];
+  assert.equal(validateState(state).ok, true);
+  const [legacy, rest, sunday] = calculateAll(state);
+  assert.equal(legacy.overtimeHours, 0);
+  assert.equal(legacy.overtimeAllocationMode, 'manual');
+  assert.equal(rest.overtimeTier2Hours, 0.5);
+  assert.equal(rest.overtimeAllocationMode, 'manual');
+  assert.equal(sunday.overtimeTier2Hours, 1);
+  assert.equal(sunday.overtimeAllocationMode, 'automatic');
+  const legacySunday = work('2026-11-22', {scheme: '5', start: '06:00', end: '07:00'});
+  const [legacySundayRow] = calculateAll({...state, entries: [legacySunday]});
+  assert.equal(legacySundayRow.overtimeTier1Hours, 1);
+  assert.equal(legacySundayRow.overtimeTier2Hours, 0);
+  for (const patch of [{normalStart: '25:00'}, {normalEnd: ''}, {overtimeRule: 'other'}, {pensionBase: 'other'}]) {
+    assert.equal(validateState({...state, jobs: [{...state.jobs[0], ...patch}]}).ok, false);
+  }
+});
+test('pension can include rounded holiday and choice accruals alongside sick pay', () => {
+  const state = fixture('4');
+  Object.assign(state.jobs[0], {hourlyRate: 200, pensionBase: 'grossWithAccruals', pensionEmployer: 11, holidayPercent: 12.5, choicePercent: 10, sickPayPercent: 100});
+  state.entries = [work('2026-11-09', {scheme: '4', type: 'sick'})];
+  assert.equal(validateState(state).ok, true);
+  const [row] = calculateAll(state);
+  assert.equal(row.grossPay, 1850);
+  assert.equal(row.choice, 185);
+  assert.equal(row.holidayAccrual, 231.25);
+  assert.equal(row.pensionBaseAmount, 2266.25);
+  assert.equal(row.pensionEmployee, 45.33);
+  assert.equal(row.pensionEmployer, 249.29);
+  assert.equal(summarize([row]).pensionBaseAmount, 2266.25);
+  delete state.jobs[0].pensionBase;
+  assert.equal(calculateAll(state)[0].pensionBaseAmount, 1850);
+});
 test('rest-day allocation only flags a missing rate when overtime uses that rate', () => {
   const state = fixture('5');
   state.jobs[0].overtimeRate2 = 450;

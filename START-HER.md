@@ -4,6 +4,8 @@
 
 Åbn **Job & kontrakt**, vælg din arbejdsuge, og udfyld satserne fra kontrakten. Udfyld begge overarbejdssatser som fulde beløb pr. time, hvis din kontrakt bruger to satser. Tilføj eventuelt dit private vogn-/kollegaregister under **Vogn & kollegaer**. Ukendte lønsatser giver ikke et færdigt lønestimat.
 
+Har du en privat Arbejde-lønprofil, skal du åbne **Job & kontrakt → Importér lønprofil**, vælge JSON-filen og udpege dit eksisterende job. Tryk **Gennemgå vilkår**, sammenlign værdierne og vælg **Gem lønvilkår**. Appen beholder jobbets registreringer og genberegner deres lønoverslag med de importerede vilkår. En eventuel note med daterede saldi vises i kontraktnoterne.
+
 ## 2. Hent din arbejdsplan ind
 
 Åbn **Importér arbejdsplan**, og vælg PDF-filerne på din enhed. Appen læser NVF-ugeplanernes tabel lokalt; PDF-filerne uploades ikke. PDFen skal have tekstlag. Scannede sider kræver tekstgenkendelse uden for appen.
@@ -18,7 +20,7 @@ Markér **Brug dette valg til min daglige visning**, hvis appen skal huske perso
 
 Stop timeren ved arbejdsdagens afslutning. Gennemgå start/slut, pause, vogn, tur og bemanding i formularen, og gem dagen. Du kan også indtaste tider manuelt. Tidligere arbejdsdage kan rettes under **Registreringer**.
 
-Brug **Overarbejde på sats 2 (min.)**, når en del af vagtens overarbejde skal betales med sats 2. Det resterende overarbejde beregnes med sats 1.
+Med **Manuel fordeling** angiver du minutter på sats 2. Appen bruger sats 1 til resten af overarbejdet. Med **ATL · fast normal arbejdstid** skal du kontrollere vagtens normale start og slut, så appen kan foreslå fordelingen. Du kan gemme normal start og slut som standard under jobbet og rette tiderne for den enkelte vagt. Kontrollér pause og eventuelle advarsler, før du gemmer.
 
 Ekstra tømninger og andre opgaver ligger inden for vagtens start/slut. De tilføjer ikke den samme tid en ekstra gang.
 

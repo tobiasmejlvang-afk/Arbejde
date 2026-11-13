@@ -33,12 +33,15 @@ Ekstratid kan samlet ikke overstige vagtens faktiske tid. Hvis noget arbejde for
 ## Løn og kontraktoplysninger
 
 - Alle beløb er **estimeret brutto**, før skat, ATP og andre fradrag.
-- Begge overarbejdssatser er fulde timesatser i kroner. Angiv hele minutter på sats 2 i den enkelte registrering. Appen fordeler højst den beregnede overarbejdstid til sats 2 og bruger sats 1 til resten. Tidligere registreringer starter med hele overarbejdet på sats 1. Hvis en anvendt sats mangler, er lønestimatet ufuldstændigt.
+- Begge overarbejdssatser er fulde timesatser i kroner. Ved manuel fordeling angives hele minutter på sats 2 i registreringen. Appen fordeler højst den beregnede overarbejdstid til sats 2 og bruger sats 1 til resten. Hvis en anvendt sats mangler, er lønestimatet ufuldstændigt.
+- Ved **ATL · fast normal arbejdstid** bruger appen normal dato, start og slut fra registreringen samt den faktiske vagt. Minutter uden en sikker sats markeres til kontrol. En angivet pauseplacering trækkes fra det relevante tidsrum. Hvis kun pausens længde er angivet og vagten rammer flere satser, trækkes pausen fra de højeste satser først, og appen beder om kontrol.
+- Normal start og slut på jobbet bruges som forslag ved nye registreringer. Fordelingen på tidligere registreringer bruger de tider, der er gemt på den enkelte vagt.
 - Ukendte satser sættes til 0. Indtast satserne fra kontrakten, før løn-estimatet bruges.
 - Akkordgaranti er betalt normaltid; registrerede faktiske timer og betalte timer kan være forskellige.
-- Pension og frivalgsopsparing vises ud fra de gemte satser som særskilte estimater. Arbejdsgiverpension er ikke kontant lønudbetaling. Kontrollér beregningsgrundlag og satser mod kontrakten.
+- Pension og frivalgsopsparing vises ud fra de gemte satser som særskilte estimater. Jobbet kan bruge bruttoløn alene eller bruttoløn med ferie- og frivalgsopsparing som pensionsgrundlag. Arbejdsgiverpension er ikke kontant lønudbetaling. Kontrollér beregningsgrundlag og satser mod kontrakten.
 - Lønperioder og udbetalingsdatoer følger jobbets indstillinger. Visninger filtrerer efter den valgte dato eller periode. En beregning kan bruge andre dage i samme uge til korrekt afgørelse af ekstra arbejdsdage.
 - Et job kan gemme oplysninger om ansættelse, ferie og sygdom. Appen opfinder ikke feriesaldi, optjening, sygeløn eller overenskomstbestemte rettigheder.
+- En importeret lønprofil opdaterer de valgte kontraktfelter på et eksisterende job efter gennemgang. En eventuel note om en opgjort saldo gemmes som kontraktnote.
 
 ## Fravær, planer og rettelser
 

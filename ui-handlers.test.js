@@ -70,8 +70,11 @@ const jobValues = job => Object.fromEntries(Object.entries(job).filter(([key]) =
 test('job creation keeps its form and stable id when storage fails, then retries without duplicates', async t => {
   const h = harness(t, await panels());
   h.act('new-job');
-  const values = { ...jobValues(defaultJob()), name: 'Synthetic job', overtimeRate2: 450 };
+  const values = { ...jobValues(defaultJob()), name: 'Synthetic job', overtimeRate2: 450, overtimeRule: 'atlFixed', normalStart: '05:45', normalEnd: '15:00' };
   assert.match(h.ctx.modalValue.html, /name="overtimeRate2"/);
+  assert.match(h.ctx.modalValue.html, /name="normalStart"/);
+  assert.equal(await h.submit({ ...values, normalEnd: '' }), false);
+  assert.equal(h.ctx.state.jobs.length, 1);
   h.setDurable(false);
   assert.equal(await h.submit(values), false);
   assert.equal(h.ctx.modalValue.closed, false);
@@ -82,6 +85,9 @@ test('job creation keeps its form and stable id when storage fails, then retries
   assert.equal(h.ctx.state.jobs.length, 2);
   assert.equal(h.ctx.state.jobs[1].name, 'Synthetic job revised');
   assert.equal(h.ctx.state.jobs[1].overtimeRate2, 450);
+  assert.equal(h.ctx.state.jobs[1].overtimeRule, 'atlFixed');
+  assert.equal(h.ctx.state.jobs[1].normalStart, '05:45');
+  assert.equal(h.ctx.state.jobs[1].normalEnd, '15:00');
   assert.equal(validateState(h.ctx.state).ok, true);
 });
 
@@ -113,6 +119,58 @@ test('advanced settings display defaults for a legacy profile and persist select
   assert.equal(h.ctx.saves, 1);
   assert.equal(validateState(h.ctx.state).ok, true);
   assert.match(module.renderSettings(h.ctx), /<option value="contrast" selected>/);
+});
+
+test('payroll profile reviews a selected job and updates only supplied terms after a durable save', async t => {
+  const module = await panels();
+  const h = harness(t, module);
+  const other = h.ctx.state.jobs[0];
+  const chosen = defaultJob({ name: 'Synthetic <contract>', employer: 'Example', notes: 'Keep this note', hourlyRate: 175 });
+  h.ctx.state.jobs.push(chosen);
+  h.ctx.state.entries.push({ id: 'profile-work', jobId: chosen.id, date: '2028-03-06', type: 'work', scheme: '3', start: '06:00', end: '14:00', breakMinutes: 0, vehicle: '', route: '', crew: 'Alene', empties: 0, waste: [], extras: [], notes: '' });
+  const envelope = {
+    kind: 'arbejde-payroll-profile', version: 1,
+    contract: { hourlyRate: 210, overtimeRate: 325, overtimeRate2: 490, overtimeRule: 'atlFixed', pensionBase: 'grossWithAccruals', periodType: '14days', periodAnchor: '2028-03-06', paydayOffset: 6, scheme: '4', startDate: '2028-02-01', sickPayPercent: 80 },
+    note: '<img src=x onerror=alert(1)>\nSynthetic snapshot'
+  };
+  const input = h.nodes['#payroll-profile-file'] = element({}, { clicks: 0, click() { this.clicks++; } });
+  h.act('import-payroll-profile');
+  assert.equal(input.clicks, 1);
+  assert.match(module.renderJobs(h.ctx), /Importér lønprofil/);
+  async function selectProfile(data) {
+    const raw = JSON.stringify(data);
+    input.files = [{ size: raw.length, text: async () => raw }];
+    input.emit('change', { currentTarget: input });
+    await settle();
+  }
+  await selectProfile({ ...envelope, contract: { ...envelope.contract, id: 'other' } });
+  assert.match(h.ctx.toasts.at(-1), /gyldig Arbejde-lønprofil/);
+  assert.equal(h.ctx.modalValue, null);
+  await selectProfile({ ...envelope, note: 'x'.repeat(1001) });
+  assert.equal(h.ctx.modalValue, null);
+  await selectProfile(envelope);
+  assert.equal(h.ctx.modalValue.title, 'Importér lønprofil');
+  assert.equal(await h.submit({ jobId: chosen.id }), true);
+  assert.match(h.ctx.modalValue.html, /Synthetic &lt;contract&gt;/);
+  assert.match(h.ctx.modalValue.html, /&lt;img src=x onerror=alert\(1\)&gt;<br>Synthetic snapshot/);
+  assert.doesNotMatch(h.ctx.modalValue.html, /<img src=x/);
+  assert.match(h.ctx.modalValue.html, /genberegner appen lønoverslag for jobbets ene registrering/);
+  assert.equal(h.ctx.state.jobs[1], chosen);
+  h.setDurable(false);
+  assert.equal(await h.submit({}), false);
+  assert.equal(h.ctx.state.jobs[1], chosen);
+  h.setDurable(true);
+  assert.equal(await h.submit({}), true);
+  const updated = { ...chosen, ...envelope.contract, notes: `${chosen.notes}\n\n${envelope.note}` };
+  assert.deepEqual(h.ctx.state.jobs, [other, updated]);
+  await selectProfile(envelope);
+  assert.equal(await h.submit({ jobId: chosen.id }), true);
+  assert.match(h.ctx.modalValue.html, /Noten findes allerede i kontrakten/);
+  assert.equal(await h.submit({}), true);
+  assert.deepEqual(h.ctx.state.jobs, [other, updated]);
+  assert.equal(h.ctx.state.entries[0].jobId, chosen.id);
+  assert.equal(h.ctx.state.settings.defaultJobId, other.id);
+  assert.equal(validateState(h.ctx.state).ok, true);
 });
 
 test('work rows display tier amounts and a clamp; CSV appends tier details after Note', async t => {

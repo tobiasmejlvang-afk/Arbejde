@@ -93,13 +93,13 @@ function openPlannedEntry(plan,date){
   const existing=entryForPlan(state,plan,date);if(existing){openEntry(existing.id);return;}
   const kind=plan.kind||'work';
   if(!types[kind]){modal('Oplysning fra vagtplan',`<p>${escape(plan.title||'Bemanding ikke afklaret')}</p><p class="muted">Denne plan kan ses i kalenderen. Afklar bemandingen, før du registrerer en arbejdsdag.</p>`,()=>true);return;}
-  openEntry(null,{date,jobId:plan.jobId,scheme:plan.scheme,type:kind,start:plan.start||'',end:plan.end||'',vehicle:plan.vehicle||'',route:plan.route||'',driver:plan.driver||state.settings.defaultDriver||'',colleague:plan.colleague||'',crew:plan.crew||'Alene',planId:plan.id,notes:plan.title||''});
+  openEntry(null,{date,jobId:plan.jobId,scheme:plan.scheme,type:kind,start:plan.start||'',end:plan.end||'',normalStart:plan.start||'',normalEnd:plan.end||'',vehicle:plan.vehicle||'',route:plan.route||'',driver:plan.driver||state.settings.defaultDriver||'',colleague:plan.colleague||'',crew:plan.crew||'Alene',planId:plan.id,notes:plan.title||''});
 }
 function finishTimer(){
   const current=timer.snapshot();if(!current)return;
   const existing=state.entries.find(e=>e.timerId===current.id);if(existing){openEntry(existing.id);return;}
   const plan=state.plans.find(p=>p.id===current.planId);
-  try{openEntry(null,{...timer.preset(),crew:plan?.crew||'Alene',colleague:plan?.colleague||'',notes:plan?.title||''});}catch(error){toast(error.message);}
+  try{openEntry(null,{...timer.preset(),normalStart:plan?.start||'',normalEnd:plan?.end||'',crew:plan?.crew||'Alene',colleague:plan?.colleague||'',notes:plan?.title||''});}catch(error){toast(error.message);}
 }
 function timerAction(action){
   if(demoMode){toast('Skift til dine egne data for at starte en arbejdsdag.');return;}
@@ -127,6 +127,8 @@ function readEntry(form,id){
   const data=new FormData(form);
   const type=data.get('type'),work=type==='work';
   const jobId=data.get('jobId');
+  const atl=work&&state.jobs.find(job=>job.id===jobId)?.overtimeRule==='atlFixed';
+  const tier2=data.get('overtimeTier2Minutes');
   const extras=work?[...form.querySelectorAll('[data-extra]')].map(node=>{
     const value=name=>node.querySelector(`[name="extra-${name}"]`)?.value||'';
     return {
@@ -140,7 +142,11 @@ function readEntry(form,id){
     id:id||uid(),date:data.get('date'),jobId,type,restDay:work&&data.get('restDay')==='on',
     scheme:form.elements.scheme?.value||data.get('scheme')||state.jobs.find(job=>job.id===jobId)?.scheme||'4',
     start:work?data.get('start'):'',end:work?data.get('end'):'',breakMinutes:work?Number(data.get('breakMinutes')||0):0,
-    overtimeTier2Minutes:work?Number(data.get('overtimeTier2Minutes')||0):0,
+    ...(work&&tier2!==null&&tier2!==''?{overtimeTier2Minutes:Number(tier2)}:{}),
+    ...(atl?{
+      normalStart:String(data.get('normalStart')||''),normalEnd:String(data.get('normalEnd')||''),
+      normalDate:String(data.get('normalDate')||''),breakStart:String(data.get('breakStart')||'')
+    }:{}),
     vehicle:data.get('vehicle')||'',route:data.get('route')||'',crew:data.get('crew')||'Alene',
     planId:String(data.get('planId')||''),timerId:String(data.get('timerId')||''),
     driver:String(data.get('driver')||'').trim(),colleague:String(data.get('colleague')||'').trim(),
@@ -177,9 +183,13 @@ function openEntry(id = null, preset = {}) {
     vehicle: defaultRoute?.vehicle || state.settings.defaultVehicle || state.vehicles[0] || '',
     route: defaultRoute?.name || state.routes[0] || '',
     crew: 'Alene', driver: state.settings.defaultDriver || '', colleague: '',
-    planId: '', timerId: '', empties: defaultRoute?.empties ?? 0, overtimeTier2Minutes: 0,
+    planId: '', timerId: '', empties: defaultRoute?.empties ?? 0,
     waste: defaultRoute?.waste || [], extras: [], notes: '', photos: [], ...preset, ...existing
   };
+  if (!existing && !entry.normalStart && !entry.normalEnd && !entry.restDay) {
+    entry.normalStart=job.normalStart||'';
+    entry.normalEnd=job.normalEnd||'';
+  }
   entry.crew = ({alone:'Alene', colleague:'Med kollega', substitute:'Afløser', temp:'Vikar'})[entry.crew] || entry.crew;
   const routeOptions = day => [['', 'Vælg en tur for datoen'], ...matchingRoutes(day).map(route => [route.id, route.name])];
   const wasteFields = wastes.map(waste => `<label><input type="checkbox" name="waste" value="${escape(waste)}" ${entry.waste.includes(waste) ? 'checked' : ''}><span>${escape(waste)}</span></label>`).join('');
@@ -198,9 +208,22 @@ function openEntry(id = null, preset = {}) {
         ${field('end', 'Sluttid', entry.end, 'time', 'required')}
         ${field('breakMinutes', 'Ubetalt pause (min.)', entry.breakMinutes, 'number', 'min="0" max="1440" step="1" required')}
         ${field('empties', 'Antal tømninger', entry.empties, 'number', 'min="0" max="100000" step="1" required')}
+        <fieldset class="full entry-waste-group" data-atl-times><legend>Normaltid til overarbejde</legend>
+          <div class="form-grid">
+            ${field('normalStart', 'Normal mødetid', entry.normalStart, 'time')}
+            ${field('normalEnd', 'Normal sluttid', entry.normalEnd, 'time')}
+          </div>
+          <p class="muted small">Angiv de aftalte tider, eller åbn dagen fra en vagtplan med tider. Ved en ekstravagt uden aftalt normaltid kan du angive sats 2 manuelt.</p>
+          ${field('breakStart', 'Start på ubetalt pause (valgfrit)', entry.breakStart, 'time')}
+          <p class="muted small">Udfyld tidspunktet ved én sammenhængende pause. Ved flere pauser kan du gennemgå satsfordelingen i beregningen.</p>
+          <details${entry.normalDate?' open':''}>
+            <summary>Normaldato ved vagt over midnat</summary>
+            ${field('normalDate', 'Dato for normal mødetid', entry.normalDate, 'date')}
+          </details>
+        </fieldset>
         <label class="field full">Overarbejde på sats 2 (min.)
-          <input name="overtimeTier2Minutes" type="number" min="0" max="1439" step="1" value="${escape(entry.overtimeTier2Minutes ?? 0)}" aria-describedby="overtime-tier-hint">
-          <small id="overtime-tier-hint" class="muted">Angiv minutterne på sats 2 for hver dato. Resten af overarbejdet beregnes på sats 1. Indstil begge satser under Job &amp; kontrakt.</small>
+          <input name="overtimeTier2Minutes" type="number" min="0" max="1439" step="1" value="${escape(entry.overtimeTier2Minutes)}" aria-describedby="overtime-tier-hint">
+          <small id="overtime-tier-hint" class="muted"></small>
         </label>
         ${state.routeTemplates?.length ? select('routeTemplate', 'Hent oplysninger fra en gemt tur', routeOptions(date), defaultRoute?.id || '') : ''}
         ${field('vehicle', 'Vogn / arbejdssted', entry.vehicle, 'text', 'list="vehicle-options" maxlength="100"')}
@@ -238,6 +261,10 @@ function openEntry(id = null, preset = {}) {
       const weekday = new Date(`${day}T12:00:00Z`).getUTCDay();
       if (until !== candidate.date && (weekday === 0 || weekday === 6)) continue;
       const next = {...candidate, id: existing?.id || uid(), date: day, extras: candidate.extras.map(extra => ({...extra, id:uid()}))};
+      if (candidate.normalDate && day !== candidate.date) {
+        const offset = Math.round((new Date(candidate.normalDate) - new Date(candidate.date)) / 86400000);
+        next.normalDate = addDays(day, offset);
+      }
       const errors = validateEntry(next, updated);
       if (errors.length) return formError(errors.join(' '));
       additions.push(next);
@@ -271,6 +298,13 @@ function openEntry(id = null, preset = {}) {
       section.hidden = !work;
       for (const control of section.querySelectorAll('input,select,button')) control.disabled = !work;
     }
+    const atl = work && state.jobs.find(job => job.id === fields.jobId.value)?.overtimeRule === 'atlFixed';
+    const atlTimes = form.querySelector('[data-atl-times]');
+    atlTimes.hidden = !atl;
+    for (const input of atlTimes.querySelectorAll('input')) input.disabled = !atl;
+    form.querySelector('#overtime-tier-hint').textContent = atl
+      ? 'Lad feltet stå tomt til automatisk beregning. Indtast minutter, også 0, hvis du vil vælge sats 2 manuelt.'
+      : 'Angiv minutterne på sats 2 for hver dato. Resten af overarbejdet beregnes på sats 1.';
     const scheme = fields.scheme.value;
     form.querySelector('#norm-hint').textContent = fields.restDay.checked ? 'Ugentlig fridag · fuldt overarbejde' : {3:'12,33 t. · 3 dage pr. uge',4:'9,25 t. · 4 dage pr. uge',5:'Man–tors 7,4 t. · fredag 7,0 t.'}[scheme];
     const candidate = readEntry(form, existing?.id);
@@ -278,14 +312,19 @@ function openEntry(id = null, preset = {}) {
     const display = form.querySelector('#entry-preview');
     const errors = validateEntry(candidate, {...state, entries: others});
     if (errors.length) { display.innerHTML = `<div class="preview-info">${escape(errors[0])}</div>`; return; }
-    const monday = weekStart(candidate.date);
+    const monday = weekStart(candidate.normalDate || candidate.date);
     const sunday = addDays(monday, 6);
-    const weekEntries = others.filter(item => item.jobId === candidate.jobId && item.date >= monday && item.date <= sunday);
+    const weekEntries = others.filter(item => {
+      const normalDate = item.normalDate || item.date;
+      return item.jobId === candidate.jobId && normalDate >= monday && normalDate <= sunday;
+    });
     const result = calculateAll({...state, entries:[...weekEntries,candidate]}).find(item => item.entry.id === candidate.id);
     if (!result) return;
-    const breakdown = result.overtimeHours || candidate.overtimeTier2Minutes ? `<div class="overtime-breakdown">
+    const warnings = result.overtimeWarnings || [];
+    const breakdown = result.overtimeHours || warnings.length || candidate.overtimeTier2Minutes ? `<div class="overtime-breakdown">
       <p class="small">Sats 1 <b>${hours(result.overtimeTier1Hours)} t.</b> · Sats 2 <b>${hours(result.overtimeTier2Hours)} t.</b></p>
       ${result.overtimeTier2Clamped ? '<p class="preview-info">Sats 2 bruges højst for de beregnede overarbejdstimer på registreringen.</p>' : ''}
+      ${warnings.map(message=>'<p class="preview-info">'+escape(message)+'</p>').join('')}
     </div>` : '';
     display.innerHTML = `<div class="entry-preview"><span>Arbejdet<b>${hours(result.actualHours)} t.</b></span><span>Betalte timer<b>${hours(result.paidHours)} t.</b></span><span>Overarbejde<b class="text-amber">${hours(result.overtimeHours)} t.</b></span><span>Est. brutto<b>${result.rateMissing ? 'Udfyld lønsats' : money(result.grossPay)}</b></span></div>${breakdown}`;
   }
@@ -298,7 +337,21 @@ function openEntry(id = null, preset = {}) {
     if (fields.colleague.value && fields.crew.value === 'Alene') fields.crew.value = 'Med kollega';
   });
   fields.jobId.addEventListener('change', () => {
-    fields.scheme.value = state.jobs.find(item => item.id === fields.jobId.value)?.scheme || '4';
+    const nextJob=state.jobs.find(item=>item.id===fields.jobId.value);
+    fields.scheme.value=nextJob?.scheme||'4';
+    if (!existing && !fields.planId.value && !fields.restDay.checked) {
+      fields.normalStart.value=nextJob?.normalStart||'';
+      fields.normalEnd.value=nextJob?.normalEnd||'';
+    }
+  });
+  fields.restDay.addEventListener('change', () => {
+    if (fields.restDay.checked && !fields.planId.value) {
+      const selected=state.jobs.find(item=>item.id===fields.jobId.value);
+      if (fields.normalStart.value===selected?.normalStart && fields.normalEnd.value===selected?.normalEnd) {
+        fields.normalStart.value='';
+        fields.normalEnd.value='';
+      }
+    }
   });
   fields.date.addEventListener('change', () => {
     if (fields.routeTemplate) fields.routeTemplate.innerHTML = options(routeOptions(fields.date.value), '');

@@ -3,7 +3,31 @@ import { defaultJob, defaultPreferences, uid, todayISO, addDays, payPeriod, mone
 const typeLabels = { work: 'Arbejdsdag', sick: 'Sygdom', off: 'Fridag', holiday: 'Ferie', freeHoliday: 'Feriefridag', absence: 'Fravær' };
 const weekdays = ['Mandag', 'Tirsdag', 'Onsdag', 'Torsdag', 'Fredag', 'Lørdag', 'Søndag'];
 const routeParities = { all: 'Alle uger', even: 'Lige uger', odd: 'Ulige uger' };
+const overtimeRules = { manual: 'Manuel fordeling', atlFixed: 'ATL · fast normal arbejdstid' };
+const periodLabels = { month: 'Kalendermåned', '14days': '14 dage' };
+const pensionBases = { gross: 'Bruttoløn', grossWithAccruals: 'Bruttoløn med ferie- og frivalgsopsparing' };
+const jobNormalHours = job => job.normalStart && job.normalEnd ? `${job.normalStart}–${job.normalEnd}` : '';
+const percentText = value => `${number(value).toLocaleString('da-DK')} %`;
+const payrollProfileFields = {
+  hourlyRate: ['Normal timeløn', money],
+  overtimeRate: ['Overarbejde · sats 1', money],
+  overtimeRate2: ['Overarbejde · sats 2', money],
+  overtimeRule: ['Fordeling af overarbejde', value => overtimeRules[value || 'manual']],
+  pensionEmployee: ['Pension · eget bidrag', percentText],
+  pensionEmployer: ['Pension · arbejdsgiver', percentText],
+  pensionBase: ['Pensionsgrundlag', value => pensionBases[value || 'gross']],
+  holidayPercent: ['Ferieopsparing', percentText],
+  choicePercent: ['Frivalgsopsparing', percentText],
+  periodType: ['Lønperiode', value => periodLabels[value]],
+  periodAnchor: ['Første dag i en 14-dages periode', value => dateText(value)],
+  paydayOffset: ['Dage fra periodens slutning til løndag', String],
+  scheme: ['Arbejdsuge', value => schemeLabel(value)],
+  startDate: ['Ansættelsesdato', value => dateText(value)],
+  sickPayPercent: ['Løn ved sygdom', percentText]
+};
+const payrollProfileTextFields = ['overtimeRule', 'pensionBase', 'periodType', 'periodAnchor', 'scheme', 'startDate'];
 const ui = { month: null, calendarSource: null, work: { query: '', job: '', type: '', month: '' } };
+let latestPayrollProfileRead = 0;
 const safeDate = value => new Date(`${String(value).slice(0, 10)}T12:00:00`);
 const isoDate = date => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 const schemeLabel = scheme => Number(scheme) === 3 ? '3 dage · 12,33 t/dag' : Number(scheme) === 4 ? '4 dage · 9,25 t/dag' : '5 dage · 7,4 / 7,0 t';
@@ -131,15 +155,19 @@ export function renderCalendar(ctx) {
 }
 
 export function renderJobs(ctx) {
-  const percent = value => `${number(value).toLocaleString('da-DK')} %`;
-  return `${pageHeading('job', 'DIT ANSÆTTELSESFORHOLD', 'Job & kontrakter', 'Dine aftaler er grundlaget. Her hænger arbejdstid, løn og opsparing sammen.', '<button class="button primary" data-panel-action="new-job">+ Opret job</button>')}
+  const percent = percentText;
+  const importControl = ctx.state.jobs.length ? '<button class="button secondary" type="button" data-panel-action="import-payroll-profile">Importér lønprofil</button>' : '';
+  return `${pageHeading('job', 'DIT ANSÆTTELSESFORHOLD', 'Job & kontrakter', 'Dine aftaler er grundlaget. Her hænger arbejdstid, løn og opsparing sammen.', `${importControl}<button class="button primary" data-panel-action="new-job">+ Opret job</button>`)}
+    <input id="payroll-profile-file" type="file" accept="application/json,.json" hidden>
     <div class="jobs-stack">${ctx.state.jobs.map(job => `<section class="card contract-card"><div class="contract-card-header"><div class="contract-identity">${brandIcon('job', 'contract-emblem', 64)}<div><span class="surface-label">${attr(ctx, job.employer || 'DIN ARBEJDSPLADS')}</span><h2>${attr(ctx, job.name)}</h2><p class="muted">${attr(ctx, job.role || job.employment || 'Din arbejdsaftale')}</p></div></div><div class="contract-status">${job.id === ctx.state.settings.defaultJobId ? '<span class="badge accent">Dit standardjob</span>' : '<span class="badge">Jobkontrakt</span>'}</div></div>
     <div class="contract-body"><section class="contract-section"><span class="contract-section-title">LØN & SATSER</span><div class="contract-primary-rate"><span class="muted">Normal timeløn</span><strong>${money(job.hourlyRate)}</strong><small>pr. time før skat</small></div>
     <div class="contract-rate-grid"><span class="muted">Overarbejde · sats 1</span><strong>${money(job.overtimeRate)} <small>/ time</small></strong></div>
     <div class="contract-rate-grid"><span class="muted">Overarbejde · sats 2</span>${job.overtimeRate2 > 0 ? `<strong>${money(job.overtimeRate2)} <small>/ time</small></strong>` : '<small class="muted">Ikke angivet</small>'}</div>
+    <div class="contract-rate-grid"><span class="muted">Fordeling af overarbejde</span><strong>${overtimeRules[job.overtimeRule || 'manual']}</strong></div>
+    ${job.overtimeRule === 'atlFixed' && jobNormalHours(job) ? `<div class="contract-rate-grid"><span class="muted">Normal arbejdstid</span><strong>${attr(ctx, jobNormalHours(job))}</strong></div>` : ''}
     ${!number(job.hourlyRate) ? '<p class="notice">Tilføj dine satser for at få et lønoverslag.</p>' : ''}</section>
     <section class="contract-section"><span class="contract-section-title">DIN ARBEJDSAFTALE</span><dl class="job-details"><div><dt>Arbejdsuge</dt><dd>${schemeLabel(job.scheme)}</dd></div><div><dt>Lønperiode</dt><dd>${job.periodType === '14days' ? '14 dage' : 'Kalendermåned'}</dd></div><div><dt>Ansættelse</dt><dd>${attr(ctx, job.employment || 'Ikke angivet')}</dd></div><div><dt>Startdato</dt><dd>${dateText(job.startDate)}</dd></div><div><dt>Løndag for perioden</dt><dd>${dateText(payPeriod(job, todayISO()).payday)}</dd></div></dl></section>
-    <section class="contract-section"><span class="contract-section-title">OPSPARING & FRIHED</span><dl class="job-details"><div><dt>Pension · dig / arbejdsgiver</dt><dd>${percent(job.pensionEmployee)} / ${percent(job.pensionEmployer)}</dd></div><div><dt>Frivalgsopsparing</dt><dd>${percent(job.choicePercent)}</dd></div><div><dt>Ferieopsparing</dt><dd>${percent(job.holidayPercent)}</dd></div><div><dt>Ferie / feriefridage årligt</dt><dd>${number(job.holidayDays)} / ${number(job.freeHolidayDays)} dage</dd></div><div><dt>Løn ved sygdom</dt><dd>${percent(job.sickPayPercent)}</dd></div></dl></section></div>
+    <section class="contract-section"><span class="contract-section-title">OPSPARING & FRIHED</span><dl class="job-details"><div><dt>Pension · dig / arbejdsgiver</dt><dd>${percent(job.pensionEmployee)} / ${percent(job.pensionEmployer)}</dd></div><div><dt>Pensionsgrundlag</dt><dd>${pensionBases[job.pensionBase || 'gross']}</dd></div><div><dt>Frivalgsopsparing</dt><dd>${percent(job.choicePercent)}</dd></div><div><dt>Ferieopsparing</dt><dd>${percent(job.holidayPercent)}</dd></div><div><dt>Ferie / feriefridage årligt</dt><dd>${number(job.holidayDays)} / ${number(job.freeHolidayDays)} dage</dd></div><div><dt>Løn ved sygdom</dt><dd>${percent(job.sickPayPercent)}</dd></div></dl></section></div>
     <div class="contract-footer">${job.notes ? `<p class="muted contract-notes">${attr(ctx, job.notes)}</p>` : '<p class="muted">Aftalen bruges automatisk på registreringer til dette job.</p>'}<div class="row-actions"><button class="button secondary" data-panel-action="edit-job" data-id="${attr(ctx, job.id)}">Ret kontrakt</button><button class="button subtle danger" data-panel-action="delete-job" data-id="${attr(ctx, job.id)}">Slet job</button></div></div></section>`).join('')}</div>
     ${!ctx.state.jobs.length ? `<section class="card empty-state">${brandIcon('job', 'empty-art', 96)}<h2>Dit første job starter her</h2><p>Tilføj din kontrakt. Så følger timer, overarbejde og løn dine egne aftaler.</p><button class="button primary" data-panel-action="new-job">Opret job</button></section>` : ''}
     <div class="card info-card"><div class="panel-title-group">${brandIcon('pay')}<div><span class="surface-label">GODT AT VIDE</span><h3>Din kontrakt, omsat til overblik</h3></div></div><p class="muted">Ved 3- og 4-dages uge bruges akkordgarantien på de første aftalte arbejdsdage, også når du arbejder kortere. Tid over dagsnormen og ekstra arbejdsdage beregnes som overarbejde. Ved 5-dages uge bruges de faktisk arbejdede timer.</p><p class="muted">Retter du kontrakten, genberegnes jobbets registreringer. Beløb er overslag før skat; pension, feriepenge og frivalg vises særskilt.</p></div>`;
@@ -155,19 +183,20 @@ function filteredRows(ctx) {
   }).sort((a, b) => b.entry.date.localeCompare(a.entry.date) || String(b.entry.start || '').localeCompare(String(a.entry.start || '')));
 }
 
-function workOvertime(row) {
+function workOvertime(ctx, row) {
   const total = row.overtimeHours > 0 ? `<strong class="accent-text">${hours(row.overtimeHours)}</strong>` : '—';
-  if (!row.overtimeTier2Hours && !row.overtimeTier2Clamped) return total;
-  const tiers = [
+  const showTiers = row.overtimeTier2Hours > 0 || row.overtimeTier2Clamped;
+  const tiers = showTiers ? [
     [1, row.overtimeTier1Hours, row.overtimeTier1Pay, 'overtimeRate'],
     [2, row.overtimeTier2Hours, row.overtimeTier2Pay, 'overtimeRate2']
-  ];
+  ] : [];
   const details = tiers.map(([tier, worked, pay, rate]) => {
     const amount = row.missingRates?.includes(rate) ? 'Sats mangler' : money(pay);
     return `<small class="muted">Sats ${tier} · ${hours(worked)} t. · ${amount}</small>`;
   }).join('');
   const note = row.overtimeTier2Clamped ? '<small class="text-amber">Sats 2 er begrænset til registreringens overarbejde.</small>' : '';
-  return total + details + note;
+  const warnings = (row.overtimeWarnings || []).map(warning => `<small class="text-amber">${attr(ctx, warning)}</small>`).join('');
+  return total + details + note + warnings;
 }
 
 function workTable(ctx) {
@@ -175,7 +204,7 @@ function workTable(ctx) {
   if (!rows.length) return `<div class="empty-state">${brandIcon('time', 'empty-art', 88)}<h3>Ingen registreringer fundet</h3><p>Prøv et andet filter, eller giv en ny arbejdsdag plads i dit overblik.</p><button class="button primary" data-panel-action="new-work">+ Registrer arbejdsdag</button></div>`;
   return `<div class="table-wrap"><table class="data-table"><thead><tr><th>Dato & job</th><th>Registrering</th><th>Vogn / tur</th><th>Arbejdet</th><th>Overarbejde</th><th>Lønoverslag</th><th><span class="sr-only">Handlinger</span></th></tr></thead><tbody>${rows.map(row => {
     const entry = row.entry;
-    return `<tr><td><strong>${dateText(entry.date)}</strong><small class="muted">${attr(ctx, jobName(ctx, entry.jobId))}</small></td><td><span class="badge${entry.type === 'work' ? '' : ' neutral'}">${typeLabels[entry.type] || 'Fravær'}</span>${entry.type === 'work' ? `<small class="muted">${attr(ctx, entry.start || '')}–${attr(ctx, entry.end || '')}</small>` : ''}</td><td>${entry.vehicle ? attr(ctx, /^\d+$/.test(String(entry.vehicle).trim()) ? `Vogn ${entry.vehicle}` : entry.vehicle) : '—'}<small class="muted">${entry.route ? `Tur ${attr(ctx, entry.route)}` : ''}</small>${entry.driver ? `<small class="muted">Chauffør: ${attr(ctx, entry.driver)}</small>` : ''}${entry.colleague ? `<small class="muted">Kollega: ${attr(ctx, entry.colleague)}</small>` : ''}</td><td>${hours(row.actualHours || 0)}</td><td>${workOvertime(row)}</td><td>${row.rateMissing ? '<span class="muted">Sats mangler</span>' : money(row.grossPay || 0)}</td><td><div class="row-actions"><button class="button subtle" data-panel-action="edit-entry" data-id="${attr(ctx, entry.id)}">Ret</button><button class="button subtle danger" data-panel-action="delete-entry" data-id="${attr(ctx, entry.id)}">Slet</button></div></td></tr>`;
+    return `<tr><td><strong>${dateText(entry.date)}</strong><small class="muted">${attr(ctx, jobName(ctx, entry.jobId))}</small></td><td><span class="badge${entry.type === 'work' ? '' : ' neutral'}">${typeLabels[entry.type] || 'Fravær'}</span>${entry.type === 'work' ? `<small class="muted">${attr(ctx, entry.start || '')}–${attr(ctx, entry.end || '')}</small>` : ''}</td><td>${entry.vehicle ? attr(ctx, /^\d+$/.test(String(entry.vehicle).trim()) ? `Vogn ${entry.vehicle}` : entry.vehicle) : '—'}<small class="muted">${entry.route ? `Tur ${attr(ctx, entry.route)}` : ''}</small>${entry.driver ? `<small class="muted">Chauffør: ${attr(ctx, entry.driver)}</small>` : ''}${entry.colleague ? `<small class="muted">Kollega: ${attr(ctx, entry.colleague)}</small>` : ''}</td><td>${hours(row.actualHours || 0)}</td><td>${workOvertime(ctx, row)}</td><td>${row.rateMissing ? '<span class="muted">Sats mangler</span>' : money(row.grossPay || 0)}</td><td><div class="row-actions"><button class="button subtle" data-panel-action="edit-entry" data-id="${attr(ctx, entry.id)}">Ret</button><button class="button subtle danger" data-panel-action="delete-entry" data-id="${attr(ctx, entry.id)}">Slet</button></div></td></tr>`;
   }).join('')}</tbody><tfoot><tr><td colspan="3">${rows.length} registreringer</td><td>${hours(rows.reduce((sum, row) => sum + number(row.actualHours), 0))}</td><td>${hours(rows.reduce((sum, row) => sum + number(row.overtimeHours), 0))}</td><td>${money(rows.reduce((sum, row) => sum + number(row.grossPay), 0))}</td><td></td></tr></tfoot></table></div>`;
 }
 
@@ -363,14 +392,27 @@ function editJob(ctx, id) {
     ${field(ctx, 'Normal timeløn · kr.', 'hourlyRate', job.hourlyRate, { type: 'number', required: true, min: 0, step: 0.01, full: true })}
     ${field(ctx, 'Overarbejde · sats 1 (kr./t.)', 'overtimeRate', job.overtimeRate, { type: 'number', required: true, min: 0, step: 0.01 })}
     ${field(ctx, 'Overarbejde · sats 2 (kr./t.)', 'overtimeRate2', job.overtimeRate2 || '', { type: 'number', min: 0, max: 100000, step: 0.01, hint: 'Udfyld, hvis din kontrakt har sats 2.' })}
+    ${selectField(ctx, 'Fordeling af overarbejde', 'overtimeRule', job.overtimeRule || 'manual', Object.entries(overtimeRules), true)}
+    <p class="muted field-hint full">Vælg ATL, hvis du følger reglen for fast normal arbejdstid. Hvis du udfylder begge tider nedenfor, foreslår appen dem på nye vagter. Du kan rette tiderne på den enkelte vagt.</p>
+    ${field(ctx, 'Normal starttid · valgfri', 'normalStart', job.normalStart, { type: 'time' })}
+    ${field(ctx, 'Normal sluttid · valgfri', 'normalEnd', job.normalEnd, { type: 'time' })}
     ${selectField(ctx, 'Lønperiode', 'periodType', job.periodType, [['month', 'Kalendermåned'], ['14days', '14 dage']])}${field(ctx, 'Første dag i en 14-dages periode', 'periodAnchor', job.periodAnchor, { type: 'date', hint: 'Påkrævet ved 14-dages lønperiode.' })}${field(ctx, 'Løndag i måneden', 'payday', job.payday, { type: 'number', required: true, min: 1, max: 31, step: 1, hint: 'Bruges ved månedsløn. 31 betyder sidste dag i korte måneder.' })}${field(ctx, 'Dage fra periodens slutning til løndag', 'paydayOffset', job.paydayOffset, { type: 'number', required: true, min: 0, max: 60, step: 1, hint: 'Bruges ved 14-dages lønperiode.' })}
-    <div class="full form-section-title"><h3>Pension, opsparing & fravær</h3></div>${field(ctx, 'Pension · eget bidrag %', 'pensionEmployee', job.pensionEmployee, { type: 'number', min: 0, max: 100, step: 0.01 })}${field(ctx, 'Pension · arbejdsgiver %', 'pensionEmployer', job.pensionEmployer, { type: 'number', min: 0, max: 100, step: 0.01 })}${field(ctx, 'Frivalgsopsparing %', 'choicePercent', job.choicePercent, { type: 'number', min: 0, max: 100, step: 0.01 })}${field(ctx, 'Feriepenge / ferieopsparing %', 'holidayPercent', job.holidayPercent, { type: 'number', min: 0, max: 100, step: 0.01 })}${field(ctx, 'Feriedage pr. år', 'holidayDays', job.holidayDays, { type: 'number', min: 0, max: 100, step: 0.5 })}${field(ctx, 'Feriefridage pr. år', 'freeHolidayDays', job.freeHolidayDays, { type: 'number', min: 0, max: 100, step: 0.5 })}${field(ctx, 'Løn ved sygdom %', 'sickPayPercent', job.sickPayPercent, { type: 'number', min: 0, max: 100, step: 0.01, hint: 'Andel af dagsnorm og timeløn ved en sygedag.' })}<label class="field full"><span>Kontraktnoter</span><textarea name="notes" rows="3" placeholder="Supplerende aftaler om ferie, sygdom eller ansættelse">${attr(ctx, job.notes || '')}</textarea></label><p class="muted field-hint full">Ændringer anvendes på alle registreringer tilknyttet dette job. Opret et nyt job ved en ny satsperiode, hvis tidligere lønberegninger skal beholde deres satser.</p></div>`;
+    <div class="full form-section-title"><h3>Pension, opsparing & fravær</h3></div>
+    ${field(ctx, 'Pension · eget bidrag %', 'pensionEmployee', job.pensionEmployee, { type: 'number', min: 0, max: 100, step: 0.01 })}${field(ctx, 'Pension · arbejdsgiver %', 'pensionEmployer', job.pensionEmployer, { type: 'number', min: 0, max: 100, step: 0.01 })}
+    ${selectField(ctx, 'Pensionsgrundlag', 'pensionBase', job.pensionBase || 'gross', Object.entries(pensionBases), true)}
+    ${field(ctx, 'Frivalgsopsparing %', 'choicePercent', job.choicePercent, { type: 'number', min: 0, max: 100, step: 0.01 })}${field(ctx, 'Feriepenge / ferieopsparing %', 'holidayPercent', job.holidayPercent, { type: 'number', min: 0, max: 100, step: 0.01 })}${field(ctx, 'Feriedage pr. år', 'holidayDays', job.holidayDays, { type: 'number', min: 0, max: 100, step: 0.5 })}${field(ctx, 'Feriefridage pr. år', 'freeHolidayDays', job.freeHolidayDays, { type: 'number', min: 0, max: 100, step: 0.5 })}${field(ctx, 'Løn ved sygdom %', 'sickPayPercent', job.sickPayPercent, { type: 'number', min: 0, max: 100, step: 0.01, hint: 'Andel af dagsnorm og timeløn ved en sygedag.' })}<label class="field full"><span>Kontraktnoter</span><textarea name="notes" rows="3" placeholder="Supplerende aftaler om ferie, sygdom eller ansættelse">${attr(ctx, job.notes || '')}</textarea></label><p class="muted field-hint full">Ændringer anvendes på alle registreringer tilknyttet dette job. Opret et nyt job ved en ny satsperiode, hvis tidligere lønberegninger skal beholde deres satser.</p></div>`;
   ctx.modal(id ? 'Ret job & kontrakt' : 'Opret job & kontrakt', html, data => {
     const name = String(data.get('name') || '').trim();
     if (!name) { ctx.toast('Giv jobbet et navn.'); return false; }
     const updated = { ...job, id: job.id || uid(), name };
     for (const key of ['employer', 'role', 'employment', 'startDate', 'periodType', 'periodAnchor', 'notes']) updated[key] = String(data.get(key) || '').trim();
     updated.scheme = String(data.get('scheme'));
+    updated.overtimeRule = String(data.get('overtimeRule') || job.overtimeRule || 'manual');
+    updated.pensionBase = String(data.get('pensionBase') || job.pensionBase || 'gross');
+    const normalStart = String(data.get('normalStart') || '');
+    const normalEnd = String(data.get('normalEnd') || '');
+    if (normalStart || normalEnd) Object.assign(updated, { normalStart, normalEnd });
+    else { delete updated.normalStart; delete updated.normalEnd; }
     for (const key of ['hourlyRate', 'overtimeRate', 'overtimeRate2', 'payday', 'paydayOffset', 'pensionEmployee', 'pensionEmployer', 'choicePercent', 'holidayPercent', 'holidayDays', 'freeHolidayDays', 'sickPayPercent']) updated[key] = number(data.get(key));
     if (updated.periodType === '14days' && !updated.periodAnchor) { ctx.toast('Vælg første dag i en 14-dages lønperiode.'); return false; }
     const jobs = ctx.state.jobs.some(item => item.id === updated.id) ? ctx.state.jobs.map(item => item.id === updated.id ? updated : item) : [...ctx.state.jobs, updated];
@@ -480,10 +522,96 @@ async function importBackup(ctx, file) {
   } catch { ctx.toast('Filen kunne ikke læses. Vælg en gyldig JSON-sikkerhedskopi fra Arbejde.'); }
 }
 
+function payrollProfileAllowed(ctx) {
+  const message = ctx.isDemo ? 'Skift til dine egne data for at importere en lønprofil.'
+    : ctx.needsRecovery ? 'Gendan dine data, før du importerer en lønprofil.'
+    : !ctx.state.jobs.length ? 'Opret et job, før du importerer en lønprofil.'
+    : '';
+  if (message) ctx.toast(message);
+  return !message;
+}
+
+function readPayrollProfile(envelope) {
+  const isRecord = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+  if (!isRecord(envelope) || envelope.kind !== 'arbejde-payroll-profile' || envelope.version !== 1
+    || Object.keys(envelope).some(key => !['kind', 'version', 'contract', 'note'].includes(key)) || !isRecord(envelope.contract)) return null;
+  if (Object.hasOwn(envelope, 'note') && (typeof envelope.note !== 'string' || envelope.note.trim().length > 1000)) return null;
+  const terms = Object.entries(envelope.contract);
+  if (!terms.length || terms.some(([key, value]) => !Object.hasOwn(payrollProfileFields, key)
+    || (payrollProfileTextFields.includes(key) ? typeof value !== 'string' || !value.trim() : !Number.isFinite(value)))) return null;
+  return { contract: envelope.contract, note: envelope.note?.trim() || '' };
+}
+
+function preparePayrollContract(state, jobId, { contract, note }) {
+  const job = state.jobs.find(item => item.id === jobId);
+  if (!job) return { error: 'Vælg et eksisterende job.' };
+  const updated = { ...job, ...contract };
+  const notes = (job.notes || '').trim();
+  const noteAdded = Boolean(note && !`\n\n${notes}\n\n`.includes(`\n\n${note}\n\n`));
+  if (noteAdded) updated.notes = [job.notes, note].filter(Boolean).join('\n\n');
+  const jobs = state.jobs.map(item => item === job ? updated : item);
+  const validation = validateState({ ...state, jobs });
+  if (!validation.ok) return { error: validation.errors[0] || 'Lønprofilen indeholder ugyldige vilkår.' };
+  return { job, jobs, noteAdded };
+}
+
+function reviewPayrollProfile(ctx, state, profile, jobId) {
+  if (ctx.state !== state || !payrollProfileAllowed(ctx)) return false;
+  const preview = preparePayrollContract(state, jobId, profile);
+  if (preview.error) { ctx.toast(preview.error); return false; }
+  const rows = Object.entries(profile.contract).map(([key, next]) => {
+    const [label, format] = payrollProfileFields[key];
+    const old = preview.job[key];
+    const hasDefault = key === 'overtimeRule' || key === 'pensionBase';
+    const before = old === undefined && !hasDefault ? 'Ikke angivet' : format(old);
+    return `<tr><th scope="row">${label}</th><td>${attr(ctx, before)}</td><td>${attr(ctx, format(next))}</td></tr>`;
+  }).join('');
+  const notePreview = profile.note ? `<h3>${preview.noteAdded ? 'Note tilføjes til kontrakten' : 'Noten findes allerede i kontrakten'}</h3><p>${attr(ctx, profile.note).replace(/\r?\n/g, '<br>')}</p>` : '';
+  const registered = state.entries.filter(entry => entry.jobId === jobId).length;
+  const history = registered ? `<p class="notice">Når du gemmer, genberegner appen lønoverslag for ${registered === 1 ? 'jobbets ene registrering' : `jobbets ${registered} registreringer`} med de nye vilkår.</p>` : '';
+  const html = `<p>Opdatér lønvilkår for <strong>${attr(ctx, preview.job.name)}</strong>.</p>
+    <div class="table-wrap"><table class="data-table"><thead><tr><th scope="col">Vilkår</th><th scope="col">Nuværende</th><th scope="col">Fra lønprofil</th></tr></thead><tbody>${rows}</tbody></table></div>${notePreview}${history}`;
+  ctx.modal('Gennemgå lønprofil', html, () => {
+    if (ctx.state !== state || !payrollProfileAllowed(ctx)) return false;
+    const update = preparePayrollContract(state, jobId, profile);
+    if (update.error) { ctx.toast(update.error); return false; }
+    const previousJobs = state.jobs;
+    state.jobs = update.jobs;
+    try {
+      if (ctx.save() === false) throw new Error('Kunne ikke gemme');
+    } catch {
+      state.jobs = previousJobs;
+      ctx.render();
+      ctx.toast('Lønprofilen kunne ikke gemmes. Prøv igen.');
+      return false;
+    }
+    ctx.toast('Lønprofilen er gemt på jobbet.');
+    return true;
+  }, { submitLabel: 'Gem lønvilkår' });
+  return true;
+}
+
+async function importPayrollProfile(ctx, file, input) {
+  if (!file || !payrollProfileAllowed(ctx)) return;
+  const read = ++latestPayrollProfileRead;
+  const state = ctx.state;
+  if (file.size > 32 * 1024) { ctx.toast('Vælg en lønprofil under 32 KB.'); return; }
+  let profile;
+  try { profile = readPayrollProfile(JSON.parse((await file.text()).replace(/^\uFEFF/, ''))); } catch { /* Format error is displayed below. */ }
+  if (read !== latestPayrollProfileRead || ctx.state !== state || document.querySelector('#payroll-profile-file') !== input) return;
+  if (!payrollProfileAllowed(ctx)) return;
+  if (!profile) { ctx.toast('Vælg en gyldig Arbejde-lønprofil i JSON-format.'); return; }
+  const suggested = getJob(ctx, state.settings.defaultJobId)?.id || state.jobs[0].id;
+  const jobs = state.jobs.map(job => [job.id, job.name]);
+  const html = `<div class="form-grid"><p class="muted full">Vælg kontrakten, og gennemgå lønvilkårene før du gemmer.</p>${selectField(ctx, 'Job', 'jobId', suggested, jobs, true)}</div>`;
+  ctx.modal('Importér lønprofil', html, data => reviewPayrollProfile(ctx, state, profile, String(data.get('jobId') || '')), { submitLabel: 'Gennemgå vilkår' });
+}
+
 function act(ctx, button) {
   const { panelAction: action, id, panelType: type, date, list, index } = button.dataset;
   if (action === 'new-job' || (action === 'create' && type === 'job')) return editJob(ctx);
   if (action === 'edit-job') return editJob(ctx, id);
+  if (action === 'import-payroll-profile' && payrollProfileAllowed(ctx)) return document.querySelector('#payroll-profile-file')?.click();
   if (action === 'new-plan' || (action === 'create' && type === 'plan')) return editPlan(ctx);
   if (action === 'edit-plan') return editPlan(ctx, id);
   if (action === 'new-work') return ctx.openEntry(null, { type: 'work', date: todayISO() });
@@ -560,5 +688,10 @@ export function bindPanels(ctx) {
     savePreferences(ctx, new FormData(event.currentTarget));
   });
   document.querySelector('#backup-file')?.addEventListener('change', event => { importBackup(ctx, event.target.files?.[0]); event.target.value = ''; });
+  document.querySelector('#payroll-profile-file')?.addEventListener('change', event => {
+    const input = event.currentTarget;
+    importPayrollProfile(ctx, input.files?.[0], input);
+    input.value = '';
+  });
 }
 
