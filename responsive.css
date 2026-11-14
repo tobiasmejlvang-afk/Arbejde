@@ -1,0 +1,115 @@
+.calendar-chip-compact { display: none; }
+
+@media screen and (max-width: 1100px) {
+  main, #editor {
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .page-heading > *, .heading-actions, .panel-head > *,
+  .form-grid > *, .grid-2 > *, .grid-3 > *,
+  .calendar-surface, .calendar-scroll, .table-wrap {
+    min-inline-size: 0;
+    max-inline-size: 100%;
+  }
+
+  .heading-actions, .panel-head {
+    flex-wrap: wrap;
+  }
+
+  main .button, #editor .button {
+    max-inline-size: 100%;
+    white-space: normal;
+  }
+
+  .field :is(input:not([type=checkbox], [type=radio]), select, textarea) {
+    min-inline-size: 0;
+    inline-size: 100%;
+    max-inline-size: 100%;
+  }
+
+  .extra-card .form-grid, .work-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .table-wrap {
+    /* Keep visually hidden column labels inside the scrolling region. */
+    position: relative;
+    overscroll-behavior-x: contain;
+  }
+
+  :is(.data-table, .schedule-review-table) :is(th, td) {
+    white-space: normal;
+  }
+
+  .calendar-toolbar-meta, .calendar-help, .app-footer { flex-wrap: wrap; }
+  .calendar-chip { white-space: normal; overflow-wrap: anywhere; }
+
+  /* The current heading and footer determine how much room the fields get. */
+  #editor[open] {
+    max-block-size: calc(100dvh - 16px);
+    overflow: auto;
+  }
+
+  #modal-form {
+    display: flex;
+    flex-direction: column;
+    max-block-size: calc(100dvh - 18px);
+    min-inline-size: 0;
+  }
+
+  .dialog-heading, .dialog-footer { flex-shrink: 0; }
+  .dialog-heading > :first-child { min-inline-size: 0; }
+  .dialog-body {
+    min-block-size: 0;
+    max-block-size: none;
+    overflow: auto;
+    overscroll-behavior: contain;
+  }
+  .dialog-footer { flex-wrap: wrap; }
+}
+
+@media screen and (max-width: 760px) {
+  .topbar-brand img {
+    inline-size: min(231px, 46vw);
+    max-inline-size: 100%;
+  }
+
+  .heading-actions { margin-inline-start: 0; }
+  .month-navigation { max-inline-size: 100%; }
+}
+
+@media screen and (max-width: 540px) {
+  :root[data-navigation] .topbar-brand img {
+    inline-size: min(190px, 42vw);
+  }
+
+  .page-heading > .page-intro { flex-basis: 100%; }
+  .page-heading .page-title-icon { flex: 0 0 auto; }
+  .dialog-heading .icon-button { min-inline-size: 44px; min-block-size: 44px; }
+  .dialog-footer .button { flex: 1 1 110px; }
+  .dialog-body .form-grid .full { grid-column: 1 / -1; }
+
+  .calendar-chip .calendar-chip-detail { display: none; }
+  .calendar-chip .calendar-chip-compact { display: inline; }
+  .calendar-chip, .calendar-chip.calendar-payday {
+    font-size: 9px;
+    line-height: 1.25;
+    min-block-size: 30px;
+    padding-inline: 1px;
+  }
+  .calendar-cell > button:first-child { min-block-size: 30px; }
+  .calendar-cell { padding-inline: 2px; }
+  .calendar-weekdays { font-size: 10px; }
+}
+
+@media screen and (max-width: 360px) {
+  .work-filters, .extra-card .form-grid { grid-template-columns: minmax(0, 1fr); }
+  .filter-region-heading { flex-wrap: wrap; gap: 4px 10px; }
+}
+
+@media screen and (max-height: 400px) {
+  #editor[open] { max-block-size: calc(100dvh - 12px); }
+  #modal-form { max-block-size: none; }
+  .dialog-body { max-block-size: none; }
+}

@@ -1,6 +1,6 @@
 {
   "name": "arbejde",
-  "version": "3.4.0",
+  "version": "3.4.1",
   "private": true,
   "description": "Personlig dansk app til arbejdstid, akkord og lønoverblik.",
   "type": "module",

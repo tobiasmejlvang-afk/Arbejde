@@ -2,3 +2,57 @@
 @media(max-width:1100px){.timer-header-pill>span{display:none}.timer-header-pill{padding:5px 9px}.timer-header-pill b{font-size:10px}.day-summary{padding:18px 21px;gap:14px}.day-summary h3{font-size:18px}.day-summary>.button{font-size:11px;padding-left:12px;padding-right:12px}.work-timer{padding:27px}.timer-clock{font-size:60px}.today-plan{padding:18px;gap:15px}.today-plan>.button{font-size:10px;padding:9px 11px}}
 @media(max-width:760px){.day-summary{flex-wrap:wrap;padding:20px;gap:13px}.day-summary>img{width:49px;height:49px;border-radius:14px}.day-summary>div{flex-basis:calc(100% - 68px)}.day-summary>.button{margin-left:62px;font-size:11px}.day-summary>b{font-size:23px;margin-left:62px}.timer-header-pill{position:fixed;right:11px;bottom:94px;z-index:55;padding:8px 12px;box-shadow:0 7px 20px #0006}.timer-header-pill>span{display:inline}.timer-header-pill b{font-size:12px}.timer-header-pill+ .topbar-date{display:none}.work-timer{padding:25px}.work-timer-top h2{font-size:27px}.timer-clock{font-size:57px}.timer-details{gap:27px}.today-plan-list{padding-left:20px;padding-right:20px;gap:13px}.today-plan{gap:13px;flex-wrap:wrap}.today-plan-date{min-width:48px;padding-right:14px}.today-plan-copy{flex-basis:calc(100% - 65px)}.today-plan>.button{margin-left:61px;font-size:11px}.today-plan-copy h3{font-size:18px}.daily-profile-note{padding-left:20px;padding-right:20px}}
 @media(max-width:540px){.day-summary{margin-bottom:25px;border-radius:19px;padding:20px 18px}.day-summary h3{font-size:18px;line-height:1.5}.day-summary p{font-size:11px;line-height:1.8}.day-summary>.button{margin-left:62px;min-height:40px;padding:9px 12px;max-width:calc(100% - 62px);white-space:normal}.day-summary>b{font-size:24px;margin:3px 0 0 62px}.work-timer{padding:25px 21px;border-radius:21px}.work-timer-top{gap:13px}.work-timer-top h2{font-size:27px;line-height:1.3}.work-timer-top .badge{font-size:10px}.work-timer-top>img{width:64px;height:64px;border-radius:18px}.timer-clock{font-size:54px;letter-spacing:-2px;margin:29px 0 24px}.timer-details{gap:25px;margin-bottom:22px}.timer-details>span{font-size:10px;line-height:1.6}.timer-details b{font-size:17px;max-width:155px;overflow-wrap:anywhere}.timer-assignment{font-size:12px;line-height:1.9;margin-bottom:23px}.timer-buttons{gap:10px}.timer-buttons .button{font-size:12px;min-height:45px;padding:11px 13px}.timer-buttons .text-button{width:100%;font-size:11px;margin-left:0;text-align:left;padding-top:5px}.timer-hint{font-size:10px;line-height:1.9;margin-top:19px}.timer-ready>p:not(.timer-hint){font-size:13px;line-height:1.9}.timer-plan-choice{font-size:12px}.timer-plan-choice select{font-size:12px}.today-plan-list{padding:0 16px 21px}.today-plan{padding:19px 15px;gap:13px;border-radius:16px}.today-plan-date{min-width:43px;padding-right:12px}.today-plan-date span{font-size:9px}.today-plan-date b{font-size:30px}.today-plan-copy{flex-basis:calc(100% - 57px)}.today-plan-copy .surface-label{font-size:8px}.today-plan-copy h3{font-size:18px;margin-bottom:8px}.today-plan-copy>p{font-size:11px;line-height:1.85}.today-plan-tags{gap:6px;margin-top:11px}.today-plan-tags .badge{font-size:9px}.today-plan>.button{margin-left:56px;min-height:39px;font-size:11px}.daily-profile-note{padding:0 18px 21px;font-size:10px;line-height:1.9}.daily-profile-note .text-button{font-size:10px}.daily-shortcuts{gap:9px;margin-bottom:22px}.daily-shortcuts .button{font-size:11px;min-height:40px;padding:9px 11px}}
+/* Route names, plan titles and imported names can be longer than a phone card. */
+.day-summary :is(h3, p),
+.today-plan-copy h3,
+.timer-assignment,
+.timer-details b,
+.daily-profile-note {
+  overflow-wrap: anywhere;
+}
+
+.work-timer-top > div,
+.timer-details > span,
+.today-plan-list {
+  min-width: 0;
+}
+
+.timer-plan-choice select {
+  min-width: 0;
+  max-width: 100%;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 540px) {
+  .today-plan > .button {
+    min-height: 44px;
+    max-width: calc(100% - 56px);
+    white-space: normal;
+  }
+
+  .day-summary > .button,
+  .daily-shortcuts .button {
+    min-height: 44px;
+    white-space: normal;
+  }
+
+  .timer-buttons > :is(.button, .text-button) {
+    min-height: 44px;
+    max-width: 100%;
+    white-space: normal;
+  }
+}
+
+@media (max-width: 360px) {
+  .timer-buttons > .button,
+  .daily-shortcuts > .button {
+    width: 100%;
+  }
+
+  .today-plan > .button,
+  .day-summary > .button {
+    width: 100%;
+    max-width: none;
+    margin-left: 0;
+  }
+}

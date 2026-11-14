@@ -10,12 +10,24 @@
 
 .waste-centre-list {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   align-items: start;
   gap: 18px;
 }
 
+.heading-actions:has([data-waste-action]) {
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: wrap;
+}
+
 .waste-centre-card {
   min-width: 0;
+}
+
+.waste-centre-card .table-wrap {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .waste-centre-header,
@@ -69,6 +81,7 @@
 
 .waste-code-table {
   min-width: 0;
+  white-space: normal;
 }
 
 .waste-code-table td:first-child {
@@ -81,6 +94,14 @@
 
 .waste-code-table td:last-child .row-actions {
   flex-wrap: wrap;
+}
+
+.waste-customer-list li > span {
+  min-width: 0;
+}
+
+.waste-customer-list .row-actions {
+  flex: 0 0 auto;
 }
 
 .waste-import-summary {
@@ -106,6 +127,8 @@
 }
 
 @media (max-width: 600px) {
+  .heading-actions:has([data-waste-action]) { margin-left: 0; }
+
   .waste-centre-header,
   .waste-centre-section {
     padding-inline: 14px;

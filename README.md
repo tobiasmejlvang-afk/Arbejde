@@ -1,4 +1,4 @@
-# Arbejde · Tid & Løn — v3.4.0
+# Arbejde · Tid & Løn — v3.4.1
 
 Personlig dansk app til arbejdstid, renovationsture, akkord, løn og fravær. Version 3 tilføjer lokal PDF-import af arbejdsplaner og en daglig timer. Det orange/grafit-design bruger de leverede logoer og 3D-ikoner samt en lokalt leveret Inter-skrifttype.
 
