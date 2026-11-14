@@ -8,11 +8,13 @@ Har du en privat Arbejde-lønprofil, skal du åbne **Job & kontrakt → Importé
 
 ## 2. Hent din arbejdsplan ind
 
-Åbn **Importér arbejdsplan**, og vælg PDF-filerne på din enhed. Appen læser NVF-ugeplanernes tabel lokalt; PDF-filerne uploades ikke. PDFen skal have tekstlag. Scannede sider kræver tekstgenkendelse uden for appen.
+Åbn **Kalender → Importér arbejdsplan**. Brug **Vælg kalenderfil (JSON)** til en Arbejde-kalenderfil for én person eller **Vælg PDF-filer** til ugeplaner med tekstlag. Appen læser filerne på din enhed.
 
-Vælg job og derefter **én person eller én vogn**. Gennemgå datoer, navnematch, opgaver og tider. Åbn **Kontrollér / ret** ved usikre rækker. Vælg de ønskede vagter, bekræft kontrolpunkterne, og tryk **Tilføj vagter**. Kun dit valgte udsnit tilføjes til kalenderen.
+Vælg det job, vagterne hører til. Ved PDF-import vælger du også **én person eller én vogn** og bruger **Kontrollér / ret** ved usikre rækker. Gennemgå datoer, navne, vognnumre og eventuelle tider. Rækker med flere mulige navne i kalenderfilen er fravalgt, indtil du vælger og bekræfter dem. Tryk **Tilføj vagter**, når du har gennemgået udvalget.
 
-Markér **Brug dette valg til min daglige visning**, hvis appen skal huske personen eller vognen. Personnoter bliver ikke automatisk til fravær. En vagt uden tider forbliver en heldagsplan. Kalenderplaner giver først faktiske timer eller løn, når du gemmer en arbejdsregistrering.
+Kalenderimporten bevarer dine gemte registreringer og manuelle planer. Hvis kalenderfilen indeholder alternative stavemåder, kan du vælge at rette præcise navnetræf på jobbets tidligere importerede planer. En vagt uden tider bliver en heldagsplan. Timer og løn beregnes først, når du gemmer en arbejdsregistrering.
+
+Ved PDF-import kan du markere **Brug dette valg til min daglige visning**, så appen husker personen eller vognen.
 
 ## 3. Registrér dagen enkelt
 

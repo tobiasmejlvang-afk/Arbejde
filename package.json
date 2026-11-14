@@ -1,12 +1,12 @@
 {
   "name": "arbejde",
-  "version": "3.3.0",
+  "version": "3.4.0",
   "private": true,
   "description": "Personlig dansk app til arbejdstid, akkord og lønoverblik.",
   "type": "module",
   "scripts": {
     "start": "node serve.mjs",
-    "test": "node --test app-integration.test.js cloud-sync.test.js data-store.test.js directory-domain.test.js domain.test.js pdf-reader.test.js schedule-domain.test.js schedule-parser.test.js sw.test.js timer-controller.test.js timer-domain.test.js ui-handlers.test.js ui-workspaces.test.js",
+    "test": "node --test app-integration.test.js cloud-sync.test.js data-store.test.js directory-domain.test.js domain.test.js pdf-reader.test.js schedule-domain.test.js schedule-parser.test.js sw.test.js timer-controller.test.js timer-domain.test.js ui-handlers.test.js ui-workspaces.test.js waste-centres.test.js",
     "check": "node check.mjs"
   },
   "engines": {

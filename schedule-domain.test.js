@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {prepareScheduleImport, applyScheduleImport} from './schedule-domain.js';
+import {entryForPlan, plansForDate} from './daily-tools.js';
 
 test('PDF.js fallback fingerprints import when Web Crypto is unavailable', () => {
   const state = emptyState();
@@ -26,6 +27,90 @@ function entry(state, overrides = {}) {
   return {id: 'entry-example', date: '2028-03-07', jobId: state.jobs[0].id, type: 'work', scheme: '3', start: '06:00', end: '14:00', breakMinutes: 0, vehicle: 'TEST-001', route: '', driver: 'Maria', colleague: '', crew: 'Alene', empties: 0, waste: [], extras: [], notes: '', ...overrides};
 }
 const importAll = (state, preview, options) => applyScheduleImport(state, preview, preview.items.map(item => item.id), options);
+
+function calendarCandidate(overrides = {}) {
+  const input = candidate(overrides);
+  return {...input, source: {...input.source, type: 'calendar'}};
+}
+
+test('calendar duplicates preserve existing IDs and offer exact approved aliases as an opt-in correction', () => {
+  const {state, options} = setup();
+  const alias = 'Marria';
+  const old = importAll(state, prepareScheduleImport(state, [candidate({person: alias, people: [alias]})], {...options, target: {mode: 'person', value: alias}})).state.plans[0];
+  old.title = 'Older source title';
+  state.plans = [old, {...old, id: 'unrelated', date: '2028-03-08', driver: 'Marría', people: ['Marría']}];
+  state.entries = [entry(state, {date: old.date, driver: alias, planId: old.id})];
+  state.settings.defaultDriver = alias;
+  const preview = prepareScheduleImport(state, [calendarCandidate()], {...options, aliases: [alias]});
+  assert.equal(preview.items[0].status, 'duplicate');
+  assert.equal(preview.renameCount, 2);
+  const skipped = importAll(state, preview);
+  assert.deepEqual(skipped.state.plans, state.plans);
+  assert.equal(skipped.renamed, 0);
+  const corrected = applyScheduleImport(state, preview, [], {renameAliases: true});
+  assert.equal(corrected.renamed, 2);
+  assert.equal(corrected.state.plans[0].id, old.id);
+  assert.equal(corrected.state.plans[0].driver, 'Maria');
+  assert.deepEqual(corrected.state.plans[0].people, ['Maria']);
+  assert.deepEqual(corrected.state.plans[1], state.plans[1]);
+  assert.deepEqual(corrected.state.entries, state.entries);
+  assert.equal(corrected.state.settings.defaultDriver, 'Maria');
+  assert.equal(entryForPlan(corrected.state, corrected.state.plans[0], old.date).id, state.entries[0].id);
+  assert.equal(prepareScheduleImport(corrected.state, [calendarCandidate()], {...options, aliases: [alias]}).renameCount, 0);
+});
+
+test('calendar rows match only a canonical name or an explicitly supplied alias', () => {
+  const {state, options} = setup();
+  const input = calendarCandidate({person: 'Marria', people: ['Marria', 'Maria Example']});
+  assert.equal(prepareScheduleImport(state, [input], options).items.length, 0);
+  const preview = prepareScheduleImport(state, [input], {...options, aliases: ['Marria']});
+  assert.equal(preview.items[0].plan.driver, 'Maria');
+  assert.deepEqual(preview.items[0].plan.people, ['Maria', 'Maria Example']);
+  assert.equal(preview.items[0].plan.colleague, 'Maria Example');
+});
+
+test('additive calendar import coexists with matching actual work and never replaces conflicting plans or absence', () => {
+  const {state, options} = setup();
+  const input = calendarCandidate();
+  const matching = entry(state, {date: input.date});
+  state.entries = [matching];
+  const preview = prepareScheduleImport(state, [input], options);
+  assert.equal(preview.items[0].status, 'new');
+  const applied = importAll(state, preview);
+  const [plan] = applied.state.plans;
+  assert.equal(plan.source.type, 'calendar');
+  assert.deepEqual(applied.state.entries, state.entries);
+  assert.equal(entryForPlan(applied.state, plan, input.date).id, matching.id);
+  assert.equal(prepareScheduleImport(applied.state, [input], options).items[0].status, 'duplicate');
+  assert.equal(plansForDate({...applied.state, settings: {...state.settings, defaultDriver: 'Somebody else'}}, input.date).length, 0);
+  for (const change of [{vehicle: 'OTHER'}, {type: 'off'}, {driver: 'Different'}]) {
+    const blocked = {...state, entries: [{...matching, ...change}]};
+    const conflict = prepareScheduleImport(blocked, [input], options);
+    assert.equal(conflict.items[0].status, 'conflict');
+    assert.equal(conflict.items[0].canReplace, false);
+    assert.throws(() => importAll(blocked, conflict, {replaceImported: true}));
+  }
+  const changed = calendarCandidate({id: 'changed', vehicle: 'TEST-002'});
+  const existing = {...applied.state, entries: []};
+  const conflict = prepareScheduleImport(existing, [changed], options);
+  assert.equal(conflict.items[0].status, 'conflict');
+  assert.equal(conflict.items[0].canReplace, false);
+  assert.throws(() => importAll(existing, conflict, {replaceImported: true}));
+});
+
+test('calendar fallback never adopts already-linked, ambiguous, or unrelated registrations', () => {
+  const {state, options} = setup();
+  const input = calendarCandidate();
+  const applied = importAll(state, prepareScheduleImport(state, [input], options)).state;
+  const [plan] = applied.plans;
+  const matching = entry(state, {date: input.date});
+  for (const patch of [{vehicle: ''}, {vehicle: 'WRONG'}, {jobId: 'other'}, {planId: 'other'}, {driver: 'Other person'}]) {
+    assert.equal(entryForPlan({...applied, entries: [{...matching, ...patch}]}, plan, input.date), null);
+  }
+  assert.equal(entryForPlan({...applied, entries: [matching, {...matching, id: 'second'}]}, plan, input.date), null);
+  assert.equal(entryForPlan({...applied, plans: [plan, {...plan, id: 'second-plan'}], entries: [matching]}, plan, input.date), null);
+  assert.equal(entryForPlan({...applied, entries: [{...matching, driver: '', colleague: ''}]}, plan, input.date).id, matching.id);
+});
 
 test('all-day plans remain untimed, and repeat import is idempotent even with a renamed PDF', () => {
   const {state, options} = setup();

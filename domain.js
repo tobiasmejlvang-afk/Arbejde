@@ -1,4 +1,5 @@
 import {validateDirectory} from './directory-domain.js';
+import {validateWasteCentres} from './waste-centres.js';
 
 // All dates are date-only ISO values and all arithmetic uses UTC to avoid DST drift.
 // Contract assumptions are explicit: 12.33 × 3 = 36.99 h and 4 × 7.4 + 7 = 36.6 h,
@@ -53,7 +54,7 @@ export function defaultPreferences() {
 }
 export function emptyState() {
   const job = defaultJob();
-  return {version: 1, jobs: [job], entries: [], plans: [], vehicles: [], routes: [], routeTemplates: [], directory: null, settings: {name: '', defaultJobId: job.id, preferences: defaultPreferences()}};
+  return {version: 1, jobs: [job], entries: [], plans: [], vehicles: [], routes: [], routeTemplates: [], wasteCentres: [], directory: null, settings: {name: '', defaultJobId: job.id, preferences: defaultPreferences()}};
 }
 export function demoState() {
   const state = emptyState();
@@ -423,7 +424,7 @@ function schema(object, allowed, label, errors) {
 }
 export function validateState(data) {
   const errors = [];
-  if (!schema(data, ['version', 'jobs', 'entries', 'plans', 'vehicles', 'routes', 'routeTemplates', 'settings', 'directory'], 'Backup', errors)) return {ok: false, errors, state: null};
+  if (!schema(data, ['version', 'jobs', 'entries', 'plans', 'vehicles', 'routes', 'routeTemplates', 'wasteCentres', 'settings', 'directory'], 'Backup', errors)) return {ok: false, errors, state: null};
   if (data.version !== 1) errors.push('Backupversionen understøttes ikke.');
   for (const key of ['jobs', 'entries', 'plans', 'vehicles', 'routes']) if (!Array.isArray(data[key])) errors.push(`${key} skal være en liste.`);
   if (errors.length) return {ok: false, errors, state: null};
@@ -508,7 +509,7 @@ export function validateState(data) {
     if (own(plan, 'kind') && ![...ENTRY_TYPES, 'unknown', 'unassigned'].includes(plan.kind)) errors.push(`${label}: ugyldig plantype.`);
     if (own(plan, 'source') && schema(plan.source, PLAN_SOURCE_KEYS, `${label}, kilde`, errors)) {
       const source = plan.source;
-      if (source.type !== 'pdf' || typeof source.fileName !== 'string' || !source.fileName.trim() || source.fileName.length > 255 || /[<>:"/\\|?*]/.test(source.fileName)) errors.push(`${label}: ugyldigt kildefilnavn.`);
+      if (!['pdf', 'calendar'].includes(source.type) || typeof source.fileName !== 'string' || !source.fileName.trim() || source.fileName.length > 255 || /[<>:"/\\|?*]/.test(source.fileName)) errors.push(`${label}: ugyldigt kildefilnavn.`);
       if (typeof source.fileHash !== 'string' || (source.fileHash !== '' && !/^(?:pdfjs:)?[a-f0-9]{16,128}$/i.test(source.fileHash))) errors.push(`${label}: ugyldig kildefingeraftryk.`);
       if (!Number.isInteger(source.page) || source.page < 1 || source.page > 10000 || !((Number.isInteger(source.row) && source.row >= 0) || (typeof source.row === 'string' && source.row.length > 0 && source.row.length <= 200))) errors.push(`${label}: ugyldig kildeplacering.`);
       if (typeof source.importedAt !== 'string' || !/^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,3})?Z$/.test(source.importedAt) || Number.isNaN(Date.parse(source.importedAt)) || !validDate(source.importedAt.slice(0, 10))) errors.push(`${label}: ugyldigt importtidspunkt.`);
@@ -560,5 +561,14 @@ export function validateState(data) {
     if (!result.ok) errors.push(...result.errors.map(error => `NVF-register: ${error}`));
     else directory = result.directory;
   }
-  return {ok: errors.length === 0, errors: [...new Set(errors)], state: errors.length ? null : {...JSON.parse(JSON.stringify(data)), directory}};
+  let centres = {};
+  if (own(data, 'wasteCentres')) {
+    if (!Array.isArray(data.wasteCentres)) errors.push('Affaldscentrene i sikkerhedskopien skal være en liste.');
+    else {
+      const result = validateWasteCentres(data.wasteCentres);
+      if (!result.ok) errors.push(...result.errors);
+      else centres = {wasteCentres: result.centres};
+    }
+  }
+  return {ok: errors.length === 0, errors: [...new Set(errors)], state: errors.length ? null : {...JSON.parse(JSON.stringify(data)), directory, ...centres}};
 }

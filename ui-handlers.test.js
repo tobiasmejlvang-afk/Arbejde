@@ -22,7 +22,7 @@ function element(dataset = {}, extra = {}) {
 function harness(t, module, schedule = false) {
   const previous = Object.getOwnPropertyDescriptor(globalThis, 'document');
   const groups = { actions: [], options: [], rows: [], panelActions: [] };
-  const nodes = { '#schedule-pdf-files': element(), '#backup-file': element({}, { clicks: 0, click() { this.clicks++; } }) };
+  const nodes = { '#schedule-pdf-files': element(), '#schedule-calendar-file': element({}, { clicks: 0, click() { this.clicks++; } }), '#backup-file': element({}, { clicks: 0, click() { this.clicks++; } }) };
   let state = emptyState(), demo = false, durable = true, calendarDate = '2028-03-01';
   const ctx = { get state() { return state; }, get isDemo() { return demo; }, escape, toasts: [], saves: 0, saveOptions: [], html: '', timer: { snapshot: () => null }, modalValue: null, confirmValue: null,
     toast(message) { this.toasts.push(message); }, closeModal() { if (this.modalValue) this.modalValue.closed = true; },
@@ -66,6 +66,60 @@ async function schedule(reader) {
 }
 const file = { name: 'synthetic_week_10_2028.pdf', size: 1000, type: 'application/pdf' };
 const jobValues = job => Object.fromEntries(Object.entries(job).filter(([key]) => key !== 'id'));
+
+test('calendar JSON opens a fixed-person review, adds chosen dates once and retains original provenance', async t => {
+  const module = await schedule(async () => { throw Error('The PDF reader should not run for a calendar file'); });
+  const h = harness(t, module, true);
+  h.ctx.state.settings.defaultDriver = 'Marria';
+  const jobId = h.ctx.state.jobs[0].id;
+  const existing = { id: 'synthetic-calendar-conflict', date: '2028-03-08', jobId, scheme: '3', title: 'Egen plan', start: '', end: '', vehicle: '901', route: '' };
+  h.ctx.state.plans = [existing];
+  h.ctx.render();
+  h.act('choose-calendar');
+  const input = h.nodes['#schedule-calendar-file'];
+  assert.equal(input.clicks, 1);
+  const envelope = {kind: 'arbejde-calendar-import', version: 1, person: 'Maria', aliases: ['Marria'], rows: [
+    {date: '2028-03-06', vehicle: '915', sourceLabel: 'sample.pdf', sourcePage: 3, sourceRow: 9, sourceHash: 'a'.repeat(64)},
+    {date: '2028-03-07', vehicle: '916', note: '<b>Kontrollér navn</b>', needsReview: true},
+    {date: '2028-03-08', vehicle: '901'}
+  ]};
+  async function upload(data) {
+    const raw = JSON.stringify(data);
+    input.emit('change', {target: {files: [{name: 'test-kalender.json', size: raw.length, text: async () => raw}], value: 'selected'}});
+    await settle();
+  }
+  await upload({...envelope, rows: [{date: '2028-02-30', vehicle: '915'}]});
+  assert.match(h.ctx.html, /Kontrollér dato, vogn og kilde/);
+  assert.equal(h.ctx.state.plans.length, 1);
+  await upload(envelope);
+  assert.match(h.ctx.html, /Kalenderfilen gælder Maria/);
+  assert.doesNotMatch(h.ctx.html, /data-schedule-action="(?:mode|target)"|data-schedule-option="replaceImported"/);
+  assert.match(h.ctx.html, /&lt;b&gt;Kontrollér navn&lt;\/b&gt;/);
+  assert.deepEqual(h.rowData().map(({ selected, disabled }) => [selected, disabled]), [[true, false], [false, false], [false, true]]);
+  h.row('kalender-2', true);
+  h.act('commit');
+  assert.equal(h.ctx.state.plans.length, 1);
+  assert.match(h.ctx.toasts.at(-1), /Bekræft/);
+  h.option('acknowledge', true);
+  h.act('commit');
+  assert.equal(h.ctx.state.plans.length, 3);
+  const stored = h.ctx.state.plans.find(plan => plan.date === '2028-03-06');
+  assert.equal(stored.driver, 'Maria');
+  assert.equal(stored.start, '');
+  assert.equal(stored.end, '');
+  assert.equal(h.ctx.state.settings.defaultDriver, 'Marria');
+  assert.deepEqual(stored.source, {type: 'calendar', fileName: 'sample.pdf', fileHash: 'a'.repeat(64), page: 3, row: 9, importedAt: stored.source.importedAt, week: 10, year: 2028});
+  assert.deepEqual(h.ctx.state.plans[0], existing);
+  assert.equal(h.ctx.state.entries.length, 0);
+  await upload(envelope);
+  assert.match(h.ctx.html, /2 findes allerede/);
+  assert.match(h.ctx.html, /data-schedule-option="renameAliases"/);
+  h.option('renameAliases', true);
+  h.act('commit');
+  assert.equal(h.ctx.state.settings.defaultDriver, 'Maria');
+  assert.equal(h.ctx.state.plans.length, 3);
+  assert.match(h.ctx.html, /Navnerettelser gemt/);
+});
 
 test('job creation keeps its form and stable id when storage fails, then retries without duplicates', async t => {
   const h = harness(t, await panels());

@@ -1,4 +1,5 @@
 import { defaultJob, defaultPreferences, uid, todayISO, addDays, payPeriod, money, hours, validateState, WASTE_TYPES } from './domain.js';
+import { entryForPlan } from './daily-tools.js';
 
 const typeLabels = { work: 'Arbejdsdag', sick: 'Sygdom', off: 'Fridag', holiday: 'Ferie', freeHoliday: 'Feriefridag', absence: 'Fravær' };
 const weekdays = ['Mandag', 'Tirsdag', 'Onsdag', 'Torsdag', 'Fredag', 'Lørdag', 'Søndag'];
@@ -89,20 +90,22 @@ function entryMatchesPlan(entry, plan, date) {
 }
 
 function planSource(ctx, plan) {
-  if (plan.source?.type !== 'pdf') return '<span class="muted">Egen arbejdsplan</span>';
   const source = plan.source;
-  return `<span class="source-badge">PDF${source.week ? ` · uge ${Number(source.week)}` : ''}</span><small class="plan-source">${attr(ctx, source.fileName || '')}${source.page ? ` · side ${Number(source.page)}` : ''}</small>`;
+  if (!source) return '<span class="muted">Egen arbejdsplan</span>';
+  const label = source.type === 'pdf' ? 'PDF' : 'Kalenderfil';
+  return `<span class="source-badge">${label}${source.week ? ` · uge ${Number(source.week)}` : ''}</span><small class="plan-source">${attr(ctx, source.fileName || '')}${source.page ? ` · side ${Number(source.page)}` : ''}${source.row ? ` · række ${attr(ctx, source.row)}` : ''}</small>`;
 }
 
 function calendarPlanChip(ctx, plan, date) {
-  const imported = plan.source?.type === 'pdf';
+  const imported = Boolean(plan.source);
+  const registered = plan.source?.type === 'calendar' && Boolean(entryForPlan(ctx.state, plan, date));
   const kind = plan.kind || 'work';
   const labels = { work: 'Arbejde', off: 'Fridag', holiday: 'Ferie', freeHoliday: 'Feriefridag', sick: 'Sygdom', absence: 'Fravær', unassigned: 'Ingen bemanding', unknown: 'Uafklaret plan' };
   const people = plan.driver || (plan.people || []).join(', ');
   const vehicle = plan.vehicle ? /^\d+$/.test(String(plan.vehicle).trim()) ? `Vogn ${plan.vehicle}` : String(plan.vehicle) : '';
   const identity = [vehicle, people].filter(Boolean).join(' · ');
   const time = plan.start && plan.end ? `${plan.start}–${plan.end}` : 'Planlagt · ingen tider';
-  return `<button class="calendar-chip calendar-plan${imported ? ' calendar-pdf' : ''}${['unassigned', 'unknown'].includes(kind) ? ' calendar-informational' : ''}" data-panel-action="register-plan" data-id="${attr(ctx, plan.id)}" data-date="${date}" title="${attr(ctx, `${labels[kind] || 'Plan'} · ${identity || plan.title || 'Arbejdsplan'} · ${time}`)}"><span>${attr(ctx, kind === 'work' ? time : labels[kind] || 'Plan')}</span>${identity ? `<small>${attr(ctx, identity)}</small>` : ''}<small class="calendar-chip-meta">${attr(ctx, plan.title || jobName(ctx, plan.jobId))}</small>${imported ? `<span class="source-badge">PDF${plan.source.week ? ` · uge ${Number(plan.source.week)}` : ''}</span>` : ''}</button>`;
+  return `<button class="calendar-chip calendar-plan${imported ? ' calendar-pdf' : ''}${['unassigned', 'unknown'].includes(kind) ? ' calendar-informational' : ''}" data-panel-action="register-plan" data-id="${attr(ctx, plan.id)}" data-date="${date}" title="${attr(ctx, `${labels[kind] || 'Plan'} · ${identity || plan.title || 'Arbejdsplan'} · ${time}`)}"><span>${attr(ctx, registered ? 'Registreret · se arbejdsdag' : kind === 'work' ? time : labels[kind] || 'Plan')}</span>${identity ? `<small>${attr(ctx, identity)}</small>` : ''}<small class="calendar-chip-meta">${attr(ctx, plan.title || jobName(ctx, plan.jobId))}</small>${imported ? `<span class="source-badge">${plan.source.type === 'pdf' ? 'PDF' : 'Kalenderfil'}${plan.source.week ? ` · uge ${Number(plan.source.week)}` : ''}</span>` : ''}</button>`;
 }
 
 function paydaysIn(ctx, from, to) {
@@ -142,7 +145,7 @@ export function renderCalendar(ctx) {
     <div class="calendar-scroll"><div class="calendar-weekdays">${weekdays.map(day => `<span>${day.slice(0, 3)}</span>`).join('')}</div><div class="calendar-grid">${Array.from({ length: 42 }, (_, index) => {
       const date = addDays(first, index);
       const entries = byDate.get(date) || [];
-      const plans = plansOn(ctx, date).filter(plan => !entries.some(entry => entryMatchesPlan(entry, plan, date)));
+      const plans = plansOn(ctx, date).filter(plan => plan.source?.type === 'calendar' || !entries.some(entry => entryMatchesPlan(entry, plan, date)));
       const dailyPaydays = paydays.get(date) || [];
       const outside = date.slice(0, 7) !== monthISO.slice(0, 7);
       return `<div class="calendar-cell${outside ? ' outside' : ''}${date === todayISO() ? ' today' : ''}"><button class="calendar-day-number" data-panel-action="calendar-add" data-date="${date}" aria-label="Registrer ${attr(ctx, dateText(date))}">${safeDate(date).getDate()}</button>

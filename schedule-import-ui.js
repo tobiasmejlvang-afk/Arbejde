@@ -8,7 +8,8 @@ const ui = {
   progress: 0, progressText: '', error: '', notice: '', jobId: '',
   mode: 'person', target: '', search: '', selected: null, acknowledge: false,
   replaceImported: false, useDefaultTimes: false, defaultStart: '', defaultEnd: '',
-  yearHint: '', weekHint: '', rememberTarget: true, completed: null, pendingCommit: null, stateScope: null
+  yearHint: '', weekHint: '', rememberTarget: true, completed: null, pendingCommit: null, stateScope: null,
+  calendarBatch: false, aliases: [], renameAliases: false
 };
 const kindLabels = { work: 'Arbejde', off: 'Fridag', holiday: 'Ferie', freeHoliday: 'Feriefridag', sick: 'Sygdom', absence: 'Fravær', unassigned: 'Ingen bemanding', unknown: 'Uafklaret' };
 const statusLabels = { new: 'Ny vagt', duplicate: 'Findes allerede', conflict: 'Konflikt', invalid: 'Skal rettes' };
@@ -57,7 +58,7 @@ function preview(ctx) {
     return prepareScheduleImport(ctx.state, ui.candidates, {
       jobId: ui.jobId, scheme: currentJob(ctx).scheme,
       defaultStart: ui.defaultStart, defaultEnd: ui.defaultEnd, useDefaultTimes: ui.useDefaultTimes,
-      target: { mode: ui.mode, value: ui.target }
+      target: { mode: ui.mode, value: ui.target }, aliases: ui.aliases
     });
   } catch (error) {
     return { items: [], counts: {}, error: error.message || 'Planen kunne ikke klargøres. Kontrollér dit valg.' };
@@ -93,10 +94,13 @@ function summaryDates(items) {
 }
 
 function uploadPanel(ctx) {
-  return `<section class="card schedule-upload-card"><div class="panel-head"><div class="panel-title-group">${icon('export')}<div><span class="surface-label">01 · VÆLG DINE ARBEJDSPLANER</span><h2>Fra PDF til din kalender</h2></div></div>${ui.candidates.length && !ui.busy && !ui.pendingCommit ? '<button class="button subtle" type="button" data-schedule-action="reset">Start forfra</button>' : ''}</div><div class="schedule-upload-body"><input id="schedule-pdf-files" type="file" accept="application/pdf,.pdf" multiple hidden><div class="schedule-dropzone${ui.busy ? ' is-busy' : ''}" id="schedule-dropzone" role="group" aria-label="Vælg eller slip PDF-filer"><div>${icon('calendar', 76, 'schedule-upload-art')}<h3>${ui.busy ? 'Læser dine arbejdsplaner…' : 'Slip dine PDF-filer her'}</h3><p>Vælg op til to arbejdsplaner. Højst 20 MB pr. fil.</p><button class="button primary" type="button" data-schedule-action="choose"${ui.busy || ui.pendingCommit ? ' disabled' : ''}>${ui.candidates.length ? 'Vælg andre PDF-filer' : 'Vælg PDF-filer'}</button></div></div>${ui.busy ? `<div class="schedule-progress-region"><div class="schedule-progress-heading"><span id="schedule-progress-label" role="status" aria-live="polite">${escape(ctx, ui.progressText)}</span><button class="button secondary" type="button" data-schedule-action="cancel">Afbryd læsning</button></div><progress id="schedule-progress" max="100" value="${ui.progress}" aria-label="Læsning af arbejdsplaner" aria-valuetext="${escape(ctx, ui.progressText)}"></progress><p class="muted">Du kan også trykke Escape. Intet bliver tilføjet, mens filerne læses.</p></div>` : ''}${ui.files.length ? `<ul class="schedule-file-list">${ui.files.map(file => `<li><span><strong>${escape(ctx, file.name)}</strong><small>${(file.size / 1024 / 1024).toLocaleString('da-DK', { maximumFractionDigits: 1 })} MB${file.pageCount ? ` · ${file.pageCount} sider` : ''}${file.rowCount !== undefined ? ` · ${file.rowCount} rækker fundet` : ''}</small></span><span class="badge${file.error ? ' schedule-danger' : ''}">${file.error ? 'Kunne ikke læses' : file.rowCount !== undefined ? 'Læst lokalt' : 'Valgt'}</span>${file.error ? `<p class="schedule-error">${escape(ctx, file.error)}</p>` : ''}</li>`).join('')}</ul>` : ''}<details class="schedule-date-hints"><summary>Hvis år eller ugenummer mangler i filen</summary><p>Angiv kun de oplysninger, du kender fra planen. De bruges ved næste filvalg.</p><div class="form-grid"><label class="field"><span>Årstal · valgfrit</span><input type="number" min="2000" max="2100" step="1" data-schedule-option="yearHint" value="${escape(ctx, ui.yearHint)}" placeholder="Fx 2026"${ui.busy || ui.pendingCommit ? ' disabled' : ''}></label><label class="field"><span>Ugenummer · valgfrit</span><input type="number" min="1" max="53" step="1" data-schedule-option="weekHint" value="${escape(ctx, ui.weekHint)}" placeholder="1–53"${ui.busy || ui.pendingCommit ? ' disabled' : ''}></label></div></details><div class="schedule-privacy-note"><span class="status-dot"></span><p>Filerne læses lokalt på din enhed. PDF-filerne gemmes ikke i appen. Først dit gennemsete udvalg bliver gemt som kalenderplaner.</p></div></div></section>`;
+  return `<section class="card schedule-upload-card"><div class="panel-head"><div class="panel-title-group">${icon('export')}<div><span class="surface-label">01 · VÆLG DINE ARBEJDSPLANER</span><h2>Fra PDF til din kalender</h2></div></div>${ui.candidates.length && !ui.busy && !ui.pendingCommit ? '<button class="button subtle" type="button" data-schedule-action="reset">Start forfra</button>' : ''}</div><div class="schedule-upload-body"><input id="schedule-pdf-files" type="file" accept="application/pdf,.pdf" multiple hidden><input id="schedule-calendar-file" type="file" accept="application/json,.json" hidden><div class="schedule-dropzone${ui.busy ? ' is-busy' : ''}" id="schedule-dropzone" role="group" aria-label="Vælg eller slip PDF-filer"><div>${icon('calendar', 76, 'schedule-upload-art')}<h3>${ui.busy ? 'Læser dine arbejdsplaner…' : 'Slip dine PDF-filer her'}</h3><p>Vælg op til to arbejdsplaner. Højst 20 MB pr. fil.</p><button class="button primary" type="button" data-schedule-action="choose"${ui.busy || ui.pendingCommit ? ' disabled' : ''}>${ui.candidates.length ? 'Vælg andre PDF-filer' : 'Vælg PDF-filer'}</button><button class="button secondary" type="button" data-schedule-action="choose-calendar"${ui.busy || ui.pendingCommit ? ' disabled' : ''}>Vælg kalenderfil (JSON)</button></div></div>${ui.busy ? `<div class="schedule-progress-region"><div class="schedule-progress-heading"><span id="schedule-progress-label" role="status" aria-live="polite">${escape(ctx, ui.progressText)}</span><button class="button secondary" type="button" data-schedule-action="cancel">Afbryd læsning</button></div><progress id="schedule-progress" max="100" value="${ui.progress}" aria-label="Læsning af arbejdsplaner" aria-valuetext="${escape(ctx, ui.progressText)}"></progress><p class="muted">Du kan også trykke Escape. Intet bliver tilføjet, mens filerne læses.</p></div>` : ''}${ui.files.length ? `<ul class="schedule-file-list">${ui.files.map(file => `<li><span><strong>${escape(ctx, file.name)}</strong><small>${(file.size / 1024 / 1024).toLocaleString('da-DK', { maximumFractionDigits: 1 })} MB${file.pageCount ? ` · ${file.pageCount} sider` : ''}${file.rowCount !== undefined ? ` · ${file.rowCount} rækker fundet` : ''}</small></span><span class="badge${file.error ? ' schedule-danger' : ''}">${file.error ? 'Kunne ikke læses' : file.rowCount !== undefined ? 'Læst lokalt' : 'Valgt'}</span>${file.error ? `<p class="schedule-error">${escape(ctx, file.error)}</p>` : ''}</li>`).join('')}</ul>` : ''}<details class="schedule-date-hints"><summary>Hvis år eller ugenummer mangler i filen</summary><p>Angiv kun de oplysninger, du kender fra planen. De bruges ved næste filvalg.</p><div class="form-grid"><label class="field"><span>Årstal · valgfrit</span><input type="number" min="2000" max="2100" step="1" data-schedule-option="yearHint" value="${escape(ctx, ui.yearHint)}" placeholder="Fx 2026"${ui.busy || ui.pendingCommit ? ' disabled' : ''}></label><label class="field"><span>Ugenummer · valgfrit</span><input type="number" min="1" max="53" step="1" data-schedule-option="weekHint" value="${escape(ctx, ui.weekHint)}" placeholder="1–53"${ui.busy || ui.pendingCommit ? ' disabled' : ''}></label></div></details><div class="schedule-privacy-note"><span class="status-dot"></span><p>Filerne læses lokalt på din enhed. PDF-filerne gemmes ikke i appen. Først dit gennemsete udvalg bliver gemt som kalenderplaner.</p></div></div></section>`;
 }
 
 function selectionPanel(ctx) {
+  if (ui.calendarBatch) {
+    return `<section class="card schedule-selection-card"><div class="panel-head"><div><h2>Vælg job</h2><p>Kalenderfilen gælder ${escape(ctx, ui.target)}.</p></div></div><div class="schedule-selection-body"><label class="field"><span>Job, som planen skal tilhøre</span><select id="schedule-job" required><option value="">Vælg job</option>${ctx.state.jobs.map(job => `<option value="${escape(ctx, job.id)}"${job.id === ui.jobId ? ' selected' : ''}>${escape(ctx, job.name)}</option>`).join('')}</select></label>${ctx.state.jobs.length ? '' : '<button class="text-button" type="button" data-schedule-action="new-job">Opret job</button>'}</div></section>`;
+  }
   const all = targets(ctx);
   const hasWorkplaces = ui.candidates.some(candidate => candidate.vehicle && !/^\d+$/.test(String(candidate.vehicle).trim()));
   const unitLabel = hasWorkplaces ? 'Vogn / arbejdssted' : 'Vogn';
@@ -115,7 +119,7 @@ function reviewRow(ctx, item) {
   const selected = ui.selected?.has(item.id) && isEligible(item);
   const sourceTime = candidate.start && candidate.end ? `${candidate.start}–${candidate.end}` : 'Tid ikke angivet';
   const plannedTime = plan.start && plan.end ? `${plan.start}–${plan.end}` : '';
-  return `<tr class="schedule-row schedule-row-${escape(ctx, item.status)}${selected ? ' is-selected' : ''}"><td><label class="schedule-row-select"><input type="checkbox" data-schedule-row="${escape(ctx, item.id)}"${checked(selected)}${!isEligible(item) ? ' disabled' : ''}><span class="sr-only">Vælg vagt ${escape(ctx, plan.date || candidate.date || 'uden dato')} for ${escape(ctx, candidate.person || candidate.vehicle)}</span></label></td><td><strong>${escape(ctx, dateLabel(plan.date || candidate.date, { weekday: 'short', year: 'numeric' }))}</strong><small>${source.week ? `Uge ${Number(source.week)}` : ''}</small></td><td><strong>${escape(ctx, candidate.person || 'Ikke angivet')}</strong><small>${candidate.vehicle ? escape(ctx, vehicleLabel(candidate.vehicle)) : 'Vogn / arbejdssted ikke angivet'}</small></td><td><strong>${escape(ctx, candidate.task || plan.title || 'Ikke angivet')}</strong><small>${candidate.route ? `Tur ${escape(ctx, candidate.route)}` : ''}</small><span class="schedule-kind">${escape(ctx, kindLabels[plan.kind || candidate.kind] || 'Uafklaret')}</span></td><td><span>${escape(ctx, sourceTime)}</span>${plannedTime && plannedTime !== sourceTime ? `<small>Din standardtid: ${escape(ctx, plannedTime)}</small>` : !plannedTime ? '<small>Gemmes som heldagsplan</small>' : ''}</td><td><span class="badge schedule-status-${escape(ctx, item.status)}">${statusLabels[item.status] || 'Kontrollér'}</span><small class="schedule-confidence${item.needsReview ? ' schedule-warning-text' : ''}">${confidenceLabel(candidate.confidence)}</small>${item.needsReview ? '<span class="schedule-review-flag">Vælg aktivt og bekræft kontrollen</span>' : ''}${rowWarnings.length ? `<details class="schedule-row-warnings"><summary>${rowWarnings.length} opmærksomhedspunkter</summary><ul>${rowWarnings.map(message => `<li>${escape(ctx, message)}</li>`).join('')}</ul></details>` : ''}<small class="schedule-source-ref">${escape(ctx, source.fileName || '')}${source.page ? ` · side ${Number(source.page)}` : ''}${source.row !== undefined ? ` · række ${escape(ctx, source.row)}` : ''}</small></td><td><button class="button subtle" type="button" data-schedule-action="edit-row" data-id="${escape(ctx, candidate.id || item.id)}">Kontrollér / ret</button></td></tr>`;
+  return `<tr class="schedule-row schedule-row-${escape(ctx, item.status)}${selected ? ' is-selected' : ''}"><td><label class="schedule-row-select"><input type="checkbox" data-schedule-row="${escape(ctx, item.id)}"${checked(selected)}${!isEligible(item) ? ' disabled' : ''}><span class="sr-only">Vælg vagt ${escape(ctx, plan.date || candidate.date || 'uden dato')} for ${escape(ctx, candidate.person || candidate.vehicle)}</span></label></td><td><strong>${escape(ctx, dateLabel(plan.date || candidate.date, { weekday: 'short', year: 'numeric' }))}</strong><small>${source.week ? `Uge ${Number(source.week)}` : ''}</small></td><td><strong>${escape(ctx, candidate.person || 'Ikke angivet')}</strong><small>${candidate.vehicle ? escape(ctx, vehicleLabel(candidate.vehicle)) : 'Vogn / arbejdssted ikke angivet'}</small></td><td><strong>${escape(ctx, candidate.task || plan.title || 'Ikke angivet')}</strong><small>${candidate.route ? `Tur ${escape(ctx, candidate.route)}` : ''}</small><span class="schedule-kind">${escape(ctx, kindLabels[plan.kind || candidate.kind] || 'Uafklaret')}</span></td><td><span>${escape(ctx, sourceTime)}</span>${plannedTime && plannedTime !== sourceTime ? `<small>Din standardtid: ${escape(ctx, plannedTime)}</small>` : !plannedTime ? '<small>Gemmes som heldagsplan</small>' : ''}</td><td><span class="badge schedule-status-${escape(ctx, item.status)}">${statusLabels[item.status] || 'Kontrollér'}</span><small class="schedule-confidence${item.needsReview ? ' schedule-warning-text' : ''}">${confidenceLabel(candidate.confidence)}</small>${item.needsReview ? '<span class="schedule-review-flag">Vælg aktivt og bekræft kontrollen</span>' : ''}${rowWarnings.length ? `<details class="schedule-row-warnings"><summary>${rowWarnings.length} opmærksomhedspunkter</summary><ul>${rowWarnings.map(message => `<li>${escape(ctx, message)}</li>`).join('')}</ul></details>` : ''}<small class="schedule-source-ref">${escape(ctx, source.fileName || '')}${source.page ? ` · side ${Number(source.page)}` : ''}${source.row !== undefined ? ` · række ${escape(ctx, source.row)}` : ''}</small></td><td>${ui.calendarBatch ? '' : `<button class="button subtle" type="button" data-schedule-action="edit-row" data-id="${escape(ctx, candidate.id || item.id)}">Kontrollér / ret</button>`}</td></tr>`;
 }
 
 function reviewPanel(ctx) {
@@ -124,25 +128,27 @@ function reviewPanel(ctx) {
   const chosen = selectedItems(result);
   const flagged = chosen.filter(item => item.needsReview).length;
   const counts = Object.fromEntries(['new', 'duplicate', 'conflict', 'invalid'].map(status => [status, result.items.filter(item => item.status === status).length]));
-  const replaceable = result.items.some(item => item.status === 'conflict' && item.canReplace);
+  const replaceable = !ui.calendarBatch && result.items.some(item => item.status === 'conflict' && item.canReplace);
+  const renameCount = result.renameCount || 0;
+  const renameChoice = ui.calendarBatch && renameCount > 0 ? `<label class="schedule-check"><input type="checkbox" data-schedule-option="renameAliases"${checked(ui.renameAliases)}><span>Ret de angivne stavemåder (${escape(ctx, ui.aliases.join(', '))}) til ${escape(ctx, ui.target)} i ${renameCount} eksisterende kalender- eller profiloplysninger.</span></label><p class="muted">Gælder importerede planer for dette job og dit valgte standardnavn. Registrerede arbejdstider bevares.</p>` : '';
   const defaultsInvalid = ui.useDefaultTimes && (!ui.defaultStart || !ui.defaultEnd || ui.defaultStart === ui.defaultEnd);
-  const canCommit = chosen.length > 0 && (!flagged || ui.acknowledge) && !defaultsInvalid && currentJob(ctx);
+  const canCommit = (chosen.length > 0 || (ui.renameAliases && renameCount > 0)) && (!flagged || ui.acknowledge) && !defaultsInvalid && currentJob(ctx);
   const otherPeople = new Set(ui.candidates.flatMap(candidateNames).filter(name => ui.mode !== 'person' || norm(name) !== norm(ui.target))).size;
-  return `<section class="card schedule-review-card" id="schedule-review"><div class="panel-head"><div><span class="surface-label">03 · GENNEMSE FØR DU GEMMER</span><h2>Dine vagter til kalenderen</h2><p>${ui.target ? `${escape(ctx, ui.mode === 'person' ? ui.target : vehicleLabel(ui.target))} · ${escape(ctx, currentJob(ctx)?.name || 'Vælg job')}` : 'Vælg en person eller vogn for at se dit udsnit.'}</p></div><span class="badge">${chosen.length} valgt</span></div>${result.error ? `<p class="schedule-error">${escape(ctx, result.error)}</p>` : ''}${ui.target && currentJob(ctx) ? `<div class="schedule-review-summary"><span><b>${result.items.length}</b> rækker i dit udsnit</span><span><b>${ui.candidates.length - result.items.length}</b> øvrige rækker fra filerne</span><span><b>${otherPeople}</b> øvrige navne i filerne</span><span>${escape(ctx, summaryDates(result.items))}</span></div><div class="schedule-status-summary"><span>${counts.new} nye</span><span>${counts.duplicate} findes allerede</span><span>${counts.conflict} konflikter</span><span>${counts.invalid} skal rettes</span></div>${result.items.length ? `<div class="schedule-review-actions"><button class="button subtle" type="button" data-schedule-action="select-clear">Fravælg alle</button><button class="button secondary" type="button" data-schedule-action="select-clear-source">Vælg tydelige, nye vagter</button><p class="muted">Usikre navnematch og andre rækker til kontrol vælges altid aktivt af dig.</p></div><div class="table-wrap schedule-table-wrap"><table class="data-table schedule-review-table"><thead><tr><th><span class="sr-only">Vælg</span></th><th>Dato</th><th>Kilde: person & vogn / arbejdssted</th><th>Opgave / type</th><th>Tid fra PDF</th><th>Kontrol & kilde</th><th><span class="sr-only">Ret række</span></th></tr></thead><tbody>${result.items.map(item => reviewRow(ctx, item)).join('')}</tbody></table></div>` : '<div class="empty-state"><h3>Ingen vagter i dette udsnit</h3><p>Vælg en anden person eller vogn, eller kontrollér navnene i filen.</p></div>'}${replaceable ? `<label class="schedule-check schedule-replace-check"><input type="checkbox" data-schedule-option="replaceImported"${checked(ui.replaceImported)}><span>Jeg vil kunne erstatte tidligere PDF-vagter, der er i konflikt. Manuelle planer og gemte arbejdsregistreringer bliver ikke erstattet.</span></label>` : ''}${counts.conflict ? '<p class="schedule-conflict-note">Konflikter med manuelt oprettede planer eller gemte registreringer er blokeret. Der bliver ikke overskrevet noget uden dit valg.</p>' : ''}${defaultsInvalid ? '<p class="schedule-error">Angiv både start og slut for standardtider, og vælg to forskellige tider. Du kan også slå standardtider fra og gemme heldagsplaner.</p>' : ''}<div class="schedule-commit-area">${flagged ? `<label class="schedule-check schedule-acknowledgement"><input type="checkbox" data-schedule-option="acknowledge"${checked(ui.acknowledge)}><span>Jeg har kontrolleret datoer, navne og indhold for de ${flagged} valgte rækker, som kræver gennemgang.</span></label>` : ''}<div class="schedule-commit-actions"><p><strong>${chosen.length} vagter valgt</strong><span>Gemmes som planer. Timer og løn tæller først, når arbejdsdagen registreres.</span></p><button class="button primary" type="button" data-schedule-action="commit"${!canCommit ? ' disabled' : ''}>Tilføj ${chosen.length} vagter</button></div></div>` : '<div class="schedule-pick-first"><p>Vælg job og derefter den person eller vogn, du vil importere for. Hele holdets plan bliver ikke tilføjet.</p></div>'}</section>`;
+  return `<section class="card schedule-review-card" id="schedule-review"><div class="panel-head"><div><span class="surface-label">03 · GENNEMSE FØR DU GEMMER</span><h2>Dine vagter til kalenderen</h2><p>${ui.target ? `${escape(ctx, ui.mode === 'person' ? ui.target : vehicleLabel(ui.target))} · ${escape(ctx, currentJob(ctx)?.name || 'Vælg job')}` : 'Vælg en person eller vogn for at se dit udsnit.'}</p></div><span class="badge">${chosen.length} valgt</span></div>${result.error ? `<p class="schedule-error">${escape(ctx, result.error)}</p>` : ''}${ui.target && currentJob(ctx) ? `<div class="schedule-review-summary"><span><b>${result.items.length}</b> rækker i dit udsnit</span>${ui.calendarBatch ? '' : `<span><b>${ui.candidates.length - result.items.length}</b> øvrige rækker fra filerne</span><span><b>${otherPeople}</b> øvrige navne i filerne</span>`}<span>${escape(ctx, summaryDates(result.items))}</span></div><div class="schedule-status-summary"><span>${counts.new} nye</span><span>${counts.duplicate} findes allerede</span><span>${counts.conflict} konflikter</span><span>${counts.invalid} skal rettes</span></div>${result.items.length ? `<div class="schedule-review-actions"><button class="button subtle" type="button" data-schedule-action="select-clear">Fravælg alle</button><button class="button secondary" type="button" data-schedule-action="select-clear-source">Vælg tydelige, nye vagter</button><p class="muted">Usikre navnematch og andre rækker til kontrol vælges altid aktivt af dig.</p></div><div class="table-wrap schedule-table-wrap"><table class="data-table schedule-review-table"><thead><tr><th><span class="sr-only">Vælg</span></th><th>Dato</th><th>Kilde: person & vogn / arbejdssted</th><th>Opgave / type</th><th>${ui.calendarBatch ? 'Tid fra kalenderfil' : 'Tid fra PDF'}</th><th>Kontrol & kilde</th><th><span class="sr-only">Ret række</span></th></tr></thead><tbody>${result.items.map(item => reviewRow(ctx, item)).join('')}</tbody></table></div>` : '<div class="empty-state"><h3>Ingen vagter i dette udsnit</h3><p>Vælg en anden person eller vogn, eller kontrollér navnene i filen.</p></div>'}${replaceable ? `<label class="schedule-check schedule-replace-check"><input type="checkbox" data-schedule-option="replaceImported"${checked(ui.replaceImported)}><span>Jeg vil kunne erstatte tidligere PDF-vagter, der er i konflikt. Manuelle planer og gemte arbejdsregistreringer bliver ikke erstattet.</span></label>` : ''}${counts.conflict ? `<p class="schedule-conflict-note">${ui.calendarBatch ? 'Planer i konflikt springes over. Se årsagen på den enkelte række.' : 'Konflikter med manuelt oprettede planer eller gemte registreringer er blokeret. Der bliver ikke overskrevet noget uden dit valg.'}</p>` : ''}${defaultsInvalid ? '<p class="schedule-error">Angiv både start og slut for standardtider, og vælg to forskellige tider. Du kan også slå standardtider fra og gemme heldagsplaner.</p>' : ''}<div class="schedule-commit-area">${renameChoice}${flagged ? `<label class="schedule-check schedule-acknowledgement"><input type="checkbox" data-schedule-option="acknowledge"${checked(ui.acknowledge)}><span>Jeg har kontrolleret datoer, navne og indhold for de ${flagged} valgte rækker, som kræver gennemgang.</span></label>` : ''}<div class="schedule-commit-actions"><p><strong>${chosen.length} vagter valgt</strong><span>Gemmes som planer. Timer og løn tæller først, når arbejdsdagen registreres.</span></p><button class="button primary" type="button" data-schedule-action="commit"${!canCommit ? ' disabled' : ''}>${chosen.length ? `Tilføj ${chosen.length} vagter` : ui.renameAliases && renameCount > 0 ? 'Gem navnerettelser' : 'Tilføj vagter'}</button></div></div>` : '<div class="schedule-pick-first"><p>Vælg job og derefter den person eller vogn, du vil importere for. Hele holdets plan bliver ikke tilføjet.</p></div>'}</section>`;
 }
 
 function recoveryPanel(ctx) {
   const pending = ui.pendingCommit;
-  return `<section class="card schedule-save-recovery" role="alert"><div><span class="surface-label">IMPORTEN ER IKKE GEMT ENDNU</span><h2>${pending.added} vagter er kun i hukommelsen</h2><p>Planerne og dit eventuelle daglige standardvalg er klar i appen, men browseren kunne ikke gemme dem. Gennemgangen er beholdt, så du ikke behøver læse PDF-filerne igen.</p><p>${ctx.isDemo ? 'Din klargjorte import tilhører dine egne data. Skift ud af demovisningen, før du gemmer eller tager backup af importen.' : 'Hold denne side åben. Prøv at gemme igen, eller åbn backup og download en sikkerhedskopi af oplysningerne i hukommelsen.'}</p></div><div class="schedule-recovery-actions">${ctx.isDemo ? '<button class="button primary" type="button" data-action="exit-demo">Til mine egne data</button>' : '<button class="button primary" type="button" data-schedule-action="retry-save">Prøv at gemme igen</button><button class="button secondary" type="button" data-schedule-action="open-backup">Åbn backup</button>'}</div></section>`;
+  return `<section class="card schedule-save-recovery" role="alert"><div><span class="surface-label">IMPORTEN ER IKKE GEMT ENDNU</span><h2>${pending.added ? `${pending.added} vagter er kun i hukommelsen` : 'Navnerettelserne er kun i hukommelsen'}</h2><p>Planerne og dit eventuelle daglige standardvalg er klar i appen, men browseren kunne ikke gemme dem. Gennemgangen er beholdt, så du ikke behøver læse PDF-filerne igen.</p><p>${ctx.isDemo ? 'Din klargjorte import tilhører dine egne data. Skift ud af demovisningen, før du gemmer eller tager backup af importen.' : 'Hold denne side åben. Prøv at gemme igen, eller åbn backup og download en sikkerhedskopi af oplysningerne i hukommelsen.'}</p></div><div class="schedule-recovery-actions">${ctx.isDemo ? '<button class="button primary" type="button" data-action="exit-demo">Til mine egne data</button>' : '<button class="button primary" type="button" data-schedule-action="retry-save">Prøv at gemme igen</button><button class="button secondary" type="button" data-schedule-action="open-backup">Åbn backup</button>'}</div></section>`;
 }
 
 export function renderScheduleImport(ctx) {
   if (ui.stateScope && ui.stateScope !== ctx.state) {
-    ui.selected = new Set(); ui.acknowledge = false; ui.replaceImported = false;
+    ui.selected = new Set(); ui.acknowledge = false; ui.replaceImported = false; ui.renameAliases = false;
     if (ui.completed) { ui.completed = null; ui.files = []; }
-    if (ui.pendingCommit && !ctx.isDemo && ui.pendingCommit.planIds.filter(id => ctx.state.plans.some(plan => plan.id === id)).length < ui.pendingCommit.added) {
+    if (ui.pendingCommit && !ctx.isDemo && (ui.pendingCommit.renamed || ui.pendingCommit.planIds.filter(id => ctx.state.plans.some(plan => plan.id === id)).length < ui.pendingCommit.added)) {
       ui.pendingCommit = null;
-      ui.error = 'De aktuelle data er ændret. Gennemgå dit udvalg igen; de læste PDF-rækker er beholdt.';
+      ui.error = 'De aktuelle data er ændret. Gennemgå dit udvalg igen. De læste rækker er beholdt.';
     }
   }
   ui.stateScope = ctx.state;
@@ -150,11 +156,11 @@ export function renderScheduleImport(ctx) {
     if (ui.jobId) { ui.selected = new Set(); ui.acknowledge = false; }
     ui.jobId = ctx.state.settings.defaultJobId || ctx.state.jobs[0]?.id || '';
   }
-  return `<div id="schedule-import"><div class="page-heading"><div class="page-intro">${icon('calendar', 64, 'page-title-icon')}<div class="page-heading-copy"><span class="section-label">DIN PLAN, UDEN GENINDTASTNING</span><h1>Importér arbejdsplan</h1><p class="muted">Læs PDF-filerne lokalt. Vælg dit eget udsnit, og gennemse vagterne før de lægges i kalenderen.</p></div></div></div>${ui.error ? `<div class="notice error-notice" role="alert">${escape(ctx, ui.error)}</div>` : ''}${ui.notice ? `<div class="notice" role="status">${escape(ctx, ui.notice)}</div>` : ''}${ui.pendingCommit ? recoveryPanel(ctx) : ''}${ui.completed ? `<section class="card schedule-complete"><div>${icon('calendar', 76)}<span class="surface-label">PLANEN ER KLAR</span><h2>${ui.completed.added} vagter tilføjet</h2><p>${ui.completed.replaced ? `${ui.completed.replaced} tidligere PDF-vagter blev erstattet. ` : ''}${ui.completed.skipped ? `${ui.completed.skipped} rækker blev sprunget over. ` : ''}Åbn kalenderen for at se planen og registrere dagen, når du har arbejdet.</p></div><button class="button primary" type="button" data-schedule-action="calendar">Åbn kalender</button><button class="button secondary" type="button" data-schedule-action="reset">Importér en ny plan</button></section>` : ''}${uploadPanel(ctx)}${ui.warnings.length && !ui.busy ? `<details class="card schedule-file-warnings"><summary>${ui.warnings.length} beskeder fra læsningen</summary><ul>${ui.warnings.map(message => `<li>${escape(ctx, warningText(message))}</li>`).join('')}</ul></details>` : ''}${ui.candidates.length && !ui.busy && !ui.completed && !ui.pendingCommit ? `<div class="schedule-workspace">${selectionPanel(ctx)}${reviewPanel(ctx)}</div>` : ''}</div>`;
+  return `<div id="schedule-import"><div class="page-heading"><div class="page-intro">${icon('calendar', 64, 'page-title-icon')}<div class="page-heading-copy"><span class="section-label">DIN PLAN, UDEN GENINDTASTNING</span><h1>Importér arbejdsplan</h1><p class="muted">Læs en PDF eller en kalenderfil lokalt, og gennemgå vagterne før de lægges i kalenderen.</p></div></div></div>${ui.error ? `<div class="notice error-notice" role="alert">${escape(ctx, ui.error)}</div>` : ''}${ui.notice ? `<div class="notice" role="status">${escape(ctx, ui.notice)}</div>` : ''}${ui.pendingCommit ? recoveryPanel(ctx) : ''}${ui.completed ? `<section class="card schedule-complete"><div>${icon('calendar', 76)}<span class="surface-label">PLANEN ER KLAR</span><h2>${ui.completed.added ? `${ui.completed.added} vagter tilføjet` : 'Navnerettelser gemt'}</h2><p>${ui.completed.renamed ? `${ui.completed.renamed} kalender- eller profiloplysninger blev rettet. ` : ''}${ui.completed.replaced ? `${ui.completed.replaced} tidligere PDF-vagter blev erstattet. ` : ''}${ui.completed.skipped ? `${ui.completed.skipped} rækker blev sprunget over. ` : ''}Åbn kalenderen for at se planen og registrere dagen, når du har arbejdet.</p></div><button class="button primary" type="button" data-schedule-action="calendar">Åbn kalender</button><button class="button secondary" type="button" data-schedule-action="reset">Importér en ny plan</button></section>` : ''}${uploadPanel(ctx)}${ui.warnings.length && !ui.busy ? `<details class="card schedule-file-warnings"><summary>${ui.warnings.length} beskeder fra læsningen</summary><ul>${ui.warnings.map(message => `<li>${escape(ctx, warningText(message))}</li>`).join('')}</ul></details>` : ''}${ui.candidates.length && !ui.busy && !ui.completed && !ui.pendingCommit ? `<div class="schedule-workspace">${selectionPanel(ctx)}${reviewPanel(ctx)}</div>` : ''}</div>`;
 }
 
 function resetSelection() {
-  ui.selected = null; ui.acknowledge = false; ui.completed = null; ui.error = '';
+  ui.selected = null; ui.acknowledge = false; ui.renameAliases = false; ui.completed = null; ui.error = '';
 }
 
 function renderWithFocus(ctx, attribute, value) {
@@ -167,6 +173,7 @@ function resetImport() {
   ui.controller?.abort();
   ui.run++;
   Object.assign(ui, { files: [], candidates: [], warnings: [], busy: false, controller: null, progress: 0, progressText: '', error: '', notice: '', target: '', search: '', selected: null, acknowledge: false, replaceImported: false, useDefaultTimes: false, defaultStart: '', defaultEnd: '', rememberTarget: true, completed: null, pendingCommit: null });
+  Object.assign(ui, { calendarBatch: false, aliases: [], renameAliases: false });
 }
 
 function cancelReading(ctx) {
@@ -176,11 +183,81 @@ function cancelReading(ctx) {
   ui.controller?.abort();
 }
 
+function readCalendarBatch(value, fileName) {
+  const object = input => input && typeof input === 'object' && !Array.isArray(input);
+  const safeName = name => typeof name === 'string' && name.length <= 255 && Boolean(name.trim()) && !/[<>:"/\\|?*\u0000-\u001f]/.test(name);
+  const person = typeof value?.person === 'string' ? value.person.trim().replace(/\s+/g, ' ') : '';
+  if (!object(value) || value.kind !== 'arbejde-calendar-import' || value.version !== 1
+    || Object.keys(value).some(key => !['kind', 'version', 'person', 'aliases', 'rows'].includes(key))
+    || !person || person.length > 200 || !Array.isArray(value.rows) || !value.rows.length || value.rows.length > 1000) {
+    throw new Error('Vælg en gyldig Arbejde-kalenderfil med højst 1.000 rækker.');
+  }
+  const aliases = value.aliases ?? [];
+  if (!Array.isArray(aliases) || aliases.length > 20 || aliases.some(alias => typeof alias !== 'string' || !alias.trim() || alias.length > 200)) {
+    throw new Error('Kalenderfilen indeholder ugyldige alternative stavemåder.');
+  }
+  const candidates = value.rows.map((row, index) => {
+    const date = typeof row?.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(row.date) ? new Date(`${row.date}T00:00:00Z`) : null;
+    const validDate = date && Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === row.date;
+    const validPage = row?.sourcePage === undefined || (Number.isInteger(row.sourcePage) && row.sourcePage >= 1 && row.sourcePage <= 10000);
+    const validRow = row?.sourceRow === undefined || (Number.isInteger(row.sourceRow) && row.sourceRow >= 0) || (typeof row.sourceRow === 'string' && row.sourceRow.length > 0 && row.sourceRow.length <= 200);
+    if (!object(row) || Object.keys(row).some(key => !['date', 'vehicle', 'sourceLabel', 'sourcePage', 'sourceHash', 'sourceRow', 'note', 'needsReview'].includes(key))
+      || !validDate || typeof row.vehicle !== 'string' || !row.vehicle.trim() || row.vehicle.length > 100
+      || (row.sourceLabel !== undefined && !safeName(row.sourceLabel)) || !validPage || !validRow
+      || (row.sourceHash !== undefined && (typeof row.sourceHash !== 'string' || !/^(?:pdfjs:)?[a-f0-9]{16,128}$/i.test(row.sourceHash)))
+      || (row.note !== undefined && (typeof row.note !== 'string' || row.note.length > 1000))
+      || (row.needsReview !== undefined && typeof row.needsReview !== 'boolean')) {
+      throw new Error(`Kontrollér dato, vogn og kilde i kalenderfilens række ${index + 1}.`);
+    }
+    const needsReview = row.needsReview === true, notes = row.note?.trim() || '';
+    const thursday = new Date(date.getTime());
+    thursday.setUTCDate(thursday.getUTCDate() + 4 - (thursday.getUTCDay() || 7));
+    const year = thursday.getUTCFullYear();
+    const week = Math.ceil(((thursday.getTime() - Date.UTC(year, 0, 1)) / 86400000 + 1) / 7);
+    return {
+      id: `kalender-${index + 1}`, date: row.date, person, people: [person], vehicle: row.vehicle.trim(),
+      kind: 'work', status: 'assigned', confidence: needsReview ? 'medium' : 'high', needsReview, notes,
+      warnings: needsReview ? [notes || 'Kontrollér denne vagt mod kilden før import.'] : [],
+      source: { type: 'calendar', fileName: row.sourceLabel || (safeName(fileName) ? fileName : 'kalenderimport.json'), fileHash: row.sourceHash || '', page: row.sourcePage ?? 1, row: row.sourceRow ?? index + 1, year, week }
+    };
+  });
+  return { person, aliases, candidates };
+}
+
+async function readCalendarFile(ctx, file) {
+  if (!file || ui.busy || ui.pendingCommit || ctx.isDemo) return;
+  if (file.size > 2 * 1024 * 1024) { ui.error = 'Kalenderfilen må højst fylde 2 MB.'; ctx.render(); return; }
+  const state = ctx.state;
+  const run = ++ui.run;
+  ui.busy = true;
+  ui.controller = new AbortController();
+  const signal = ui.controller.signal;
+  ui.progress = 0;
+  ui.progressText = 'Læser kalenderfilen lokalt…';
+  ctx.render();
+  try {
+    const raw = (await file.text()).replace(/^\uFEFF/, '');
+    if (signal.aborted || run !== ui.run || ctx.state !== state || ctx.isDemo) return;
+    let value;
+    try { value = JSON.parse(raw); } catch { throw new Error('Kalenderfilen er ikke gyldig JSON.'); }
+    const batch = readCalendarBatch(value, file.name);
+    resetImport();
+    Object.assign(ui, { calendarBatch: true, mode: 'person', target: batch.person, aliases: batch.aliases,
+      candidates: batch.candidates, files: [{ name: file.name, size: file.size, rowCount: batch.candidates.length }],
+      rememberTarget: false, notice: `${batch.candidates.length} vagter er læst. Gennemgå dem, før du gemmer.` });
+    ctx.render();
+  } catch (error) {
+    if (!signal.aborted && run === ui.run) ui.error = error.message || 'Kalenderfilen kunne ikke læses.';
+  } finally {
+    if (run === ui.run) { ui.busy = false; ui.controller = null; ctx.render(); }
+  }
+}
+
 async function readFiles(ctx, fileList) {
   if (ctx.isDemo) { ctx.toast('Skift til dine egne data for at importere din arbejdsplan.'); return; }
   const files = Array.from(fileList || []);
   if (!files.length) return;
-  if (ui.pendingCommit) { ctx.toast('Gem den klargjorte import, før du vælger nye PDF-filer. Din gennemgang er beholdt.'); return; }
+  if (ui.pendingCommit) { ctx.toast('Gem den klargjorte import, før du vælger nye filer. Din gennemgang er beholdt.'); return; }
   if (ui.busy) { ctx.toast('Afbryd den igangværende læsning, før du vælger nye filer.'); return; }
   if (files.length > 2) { ui.error = 'Vælg højst to PDF-filer ad gangen.'; ctx.render(); return; }
   if (files.some(file => !/\.pdf$/i.test(file.name) && file.type !== 'application/pdf')) { ui.error = 'Vælg PDF-filer med dine arbejdsplaner.'; ctx.render(); return; }
@@ -266,7 +343,7 @@ function savePreparedImport(ctx) {
   if (present < ui.pendingCommit.added) {
     ui.pendingCommit = null;
     ui.selected = new Set(); ui.acknowledge = false;
-    ui.error = 'De klargjorte planer er blevet ændret eller fjernet i de aktuelle data. Gennemgå dit udvalg igen. De læste PDF-rækker er beholdt.';
+    ui.error = 'De klargjorte planer er blevet ændret eller fjernet i de aktuelle data. Gennemgå dit udvalg igen. De læste rækker er beholdt.';
     ctx.render();
     return false;
   }
@@ -283,11 +360,11 @@ function savePreparedImport(ctx) {
   const pending = ui.pendingCommit;
   const retained = pending.planIds.filter(id => ctx.state.plans.some(plan => plan.id === id)).length;
   const dates = ctx.state.plans.filter(plan => pending.planIds.includes(plan.id) && plan.date).map(plan => plan.date).sort();
-  ui.completed = { added: Math.min(pending.added, retained), skipped: pending.skipped, replaced: pending.replaced, firstDate: dates[0] || '' };
+  ui.completed = { added: Math.min(pending.added, retained), skipped: pending.skipped, replaced: pending.replaced, renamed: pending.renamed, firstDate: dates[0] || '' };
   ui.pendingCommit = null;
   ui.candidates = []; ui.selected = null; ui.warnings = []; ui.target = ''; ui.notice = ''; ui.error = '';
   ctx.render();
-  ctx.toast(`${ui.completed.added} vagter er gemt i kalenderen.`);
+  ctx.toast(ui.completed.added ? `${ui.completed.added} vagter er gemt i kalenderen.` : 'Navnerettelserne er gemt.');
   return true;
 }
 
@@ -297,18 +374,19 @@ function commit(ctx) {
   const result = preview(ctx);
   reconcileSelection(result);
   const selected = selectedItems(result);
-  if (!selected.length) { ctx.toast('Vælg mindst én ny vagt, der kan importeres.'); return; }
+  const renameAliases = ui.calendarBatch && ui.renameAliases && result.renameCount > 0;
+  if (!selected.length && !renameAliases) { ctx.toast('Vælg mindst én ny vagt, der kan importeres.'); return; }
   if (selected.some(item => item.needsReview) && !ui.acknowledge) { ctx.toast('Bekræft, at du har gennemgået de valgte rækker til kontrol.'); return; }
   if (ui.useDefaultTimes && (!ui.defaultStart || !ui.defaultEnd || ui.defaultStart === ui.defaultEnd)) { ctx.toast('Ret standardtiderne, eller slå dem fra.'); return; }
   try {
-    const applied = applyScheduleImport(ctx.state, result, selected.map(item => item.id), { replaceImported: ui.replaceImported, acknowledgeWarnings: ui.acknowledge });
+    const applied = applyScheduleImport(ctx.state, result, selected.map(item => item.id), { replaceImported: !ui.calendarBatch && ui.replaceImported, acknowledgeWarnings: ui.acknowledge, renameAliases });
     if (ui.rememberTarget) {
       const settings = { ...applied.state.settings, defaultDriver: ui.mode === 'person' ? ui.target : '', defaultVehicle: ui.mode === 'vehicle' ? ui.target : '' };
       const checked = validateState({ ...applied.state, settings });
       if (!checked.ok) throw new Error(checked.errors[0] || 'Valget til din daglige visning kunne ikke gemmes.');
       applied.state = checked.state;
     }
-    ui.pendingCommit = { added: applied.added || 0, skipped: applied.skipped || 0, replaced: applied.replaced || 0, planIds: selected.map(item => item.plan.id) };
+    ui.pendingCommit = { added: applied.added || 0, skipped: applied.skipped || 0, replaced: applied.replaced || 0, renamed: applied.renamed || 0, planIds: selected.map(item => item.plan.id) };
     ui.error = '';
     Object.assign(ctx.state, applied.state);
     savePreparedImport(ctx);
@@ -318,17 +396,18 @@ function commit(ctx) {
 function act(ctx, button) {
   const { scheduleAction: action, mode, value, id } = button.dataset;
   if (action === 'choose') { if (ui.pendingCommit) { ctx.toast('Gem den klargjorte import først.'); return; } document.querySelector('#schedule-pdf-files')?.click(); return; }
+  if (action === 'choose-calendar') { if (ctx.isDemo) return ctx.toast('Skift til dine egne data for at importere din arbejdsplan.'); if (!ui.pendingCommit && !ui.busy) document.querySelector('#schedule-calendar-file')?.click(); return; }
   if (action === 'cancel') return cancelReading(ctx);
   if (action === 'reset') { if (ui.pendingCommit) { ctx.toast('Gem den klargjorte import, før du starter forfra. Din gennemgang er beholdt.'); return; } resetImport(); ctx.render(); return; }
   if (action === 'retry-save') return savePreparedImport(ctx);
   if (action === 'open-backup') { if (ctx.isDemo) { ctx.toast('Skift til dine egne data for at tage backup af den klargjorte import.'); return; } return ctx.navigate('eksport'); }
   if (action === 'new-job') return ctx.navigate('job');
   if (action === 'calendar') { if (ui.completed?.firstDate && typeof ctx.setCalendarDate === 'function') ctx.setCalendarDate(ui.completed.firstDate); return ctx.navigate('kalender'); }
-  if (action === 'mode' && ['person', 'vehicle'].includes(mode)) { ui.mode = mode; ui.target = ''; ui.search = ''; resetSelection(); renderWithFocus(ctx, 'data-mode', mode); return; }
-  if (action === 'target') { ui.target = value; resetSelection(); renderWithFocus(ctx, 'data-value', value); return; }
+  if (!ui.calendarBatch && action === 'mode' && ['person', 'vehicle'].includes(mode)) { ui.mode = mode; ui.target = ''; ui.search = ''; resetSelection(); renderWithFocus(ctx, 'data-mode', mode); return; }
+  if (!ui.calendarBatch && action === 'target') { ui.target = value; resetSelection(); renderWithFocus(ctx, 'data-value', value); return; }
   if (action === 'select-clear') { ui.selected = new Set(); ui.acknowledge = false; renderWithFocus(ctx, 'data-schedule-action', action); return; }
   if (action === 'select-clear-source') { const result = preview(ctx); ui.selected = new Set(result.items.filter(item => item.status === 'new' && !item.needsReview).map(item => item.id)); ui.acknowledge = false; renderWithFocus(ctx, 'data-schedule-action', action); return; }
-  if (action === 'edit-row') return editRow(ctx, id);
+  if (!ui.calendarBatch && action === 'edit-row') return editRow(ctx, id);
   if (action === 'commit') return commit(ctx);
 }
 
@@ -340,6 +419,11 @@ export function bindScheduleImport(ctx) {
   latestContext = ctx;
   bindActions(ctx);
   document.querySelector('#schedule-pdf-files')?.addEventListener('change', event => { const files = Array.from(event.target.files || []); event.target.value = ''; readFiles(ctx, files); });
+  document.querySelector('#schedule-calendar-file')?.addEventListener('change', event => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    readCalendarFile(ctx, file);
+  });
   const zone = document.querySelector('#schedule-dropzone');
   if (zone) {
     zone.addEventListener('dragover', event => { event.preventDefault(); if (!ui.busy && !ui.pendingCommit) zone.classList.add('is-dragging'); });
@@ -361,7 +445,7 @@ export function bindScheduleImport(ctx) {
     const option = input.dataset.scheduleOption;
     ui[option] = input.type === 'checkbox' ? input.checked : input.value;
     ui.error = '';
-    if (option !== 'acknowledge') ui.acknowledge = false;
+    if (option !== 'acknowledge' && option !== 'renameAliases') ui.acknowledge = false;
     if (option === 'yearHint' || option === 'weekHint') return;
     renderWithFocus(ctx, 'data-schedule-option', option);
   }));

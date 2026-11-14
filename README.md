@@ -1,4 +1,4 @@
-# Arbejde · Tid & Løn — v3.2.0
+# Arbejde · Tid & Løn — v3.4.0
 
 Personlig dansk app til arbejdstid, renovationsture, akkord, løn og fravær. Version 3 tilføjer lokal PDF-import af arbejdsplaner og en daglig timer. Det orange/grafit-design bruger de leverede logoer og 3D-ikoner samt en lokalt leveret Inter-skrifttype.
 
@@ -27,10 +27,16 @@ Hvis gemte data ikke kan læses, bliver de oprindelige data ikke overskrevet. Br
 ## Fra arbejdsplan til arbejdsdag
 
 1. Opret eller ret **Job & kontrakt** med arbejdsuge, lønperiode og dine kontraktsatser.
-2. Åbn **Importér arbejdsplan**, og vælg PDF-filer fra din enhed.
-3. Vælg job og derefter **én person eller én vogn**. Gennemse datoer, navnematch, opgaver og eventuelle tider. Ret usikre rækker, vælg de ønskede vagter, og bekræft importen.
+2. Åbn **Kalender → Importér arbejdsplan**, og vælg PDF-filer eller en Arbejde-kalenderfil (JSON) fra din enhed.
+3. Vælg jobbet. Ved PDF-import vælger du også **én person eller én vogn**. Gennemgå datoer, navne, opgaver og eventuelle tider, før du vælger og tilføjer vagterne.
 4. Se vagterne i **Kalender**. Brug **Arbejdstid** til at måle eller indtaste den faktisk udførte arbejdsdag.
 5. Se periodens tal i **Overblik** og **Løn**, og tag en JSON-sikkerhedskopi.
+
+### Kalenderfil (JSON)
+
+Brug **Vælg kalenderfil (JSON)** i **Importér arbejdsplan**, og vælg det eksisterende job, vagterne hører til. Kalenderfilen angiver, hvem planerne gælder for. Vælg de ønskede rækker i gennemgangen, og tryk **Tilføj vagter**. Rækker med flere mulige navne er fravalgt som standard og kræver en bekræftelse, hvis du vælger dem.
+
+Gentagen import springer dubletter over, og appen viser eventuelle konflikter før lagring. Importen bevarer gemte arbejdsregistreringer og manuelle planer. Hvis filen indeholder alternative stavemåder, kan du vælge at rette præcise navnetræf i tidligere importerede planer for det valgte job og i din standardchauffør. En række uden tider gemmes som heldagsplan.
 
 ### PDF-import
 
@@ -58,12 +64,13 @@ En aktiv eller stoppet timer, som endnu ikke er gemt som arbejdsregistrering, in
 | Arbejdstid | Daglig timer og manuel registrering |
 | Løn | Normaltid, overarbejde og estimeret brutto |
 | Kalender | Planer, registreringer, fravær og vejledende løndage |
-| Importér arbejdsplan | Lokal PDF-læsning, udvælgelse og bekræftelse |
+| Importér arbejdsplan | Lokal import af PDF-ugeplaner og JSON-kalenderfiler med gennemgang |
 | Registreringer | Søg, ret, slet og eksportér arbejdsdage |
 | Opret | Genveje til nye tilføjelser |
 | Job & kontrakt | Arbejdsordning, satser og kontraktoplysninger |
 | Fravær | Sygdom, fridage, ferie og feriefridage |
 | Vogn & kollegaer | Privat register, søgning og kildekontrol |
+| Affaldscentre | Kundenumre, varekoder, adresser og aflæsningsinstruktioner |
 | Statistik | Arbejdstid og aktivitet |
 | Eksport | Tag oplysninger med videre |
 | Indstillinger | Personlige valg, lister og fuld backup |
@@ -72,9 +79,11 @@ Chauffør og kollega/medhjælper er valgfrie registreringsfelter. De kan vælges
 
 ## Privatliv, register og backup
 
-PDF-filen behandles lokalt med den medfølgende Mozilla PDF.js-runtime. **PDF-bytes uploades ikke.** Den offentlige kode indeholder ingen private arbejdsplaner eller et udfyldt personale-/vognregister. Importerede oplysninger og bekræftede planer gemmes i din browser. Opbevar eksporter privat, da de kan indeholde navne, kontaktoplysninger og løndata.
+Browseren læser PDF- og kalenderfiler på enheden. PDF-læsning bruger den medfølgende Mozilla PDF.js-runtime. Ved kontosynkronisering følger gemte planer med som kalenderdata. Kildefilerne bliver på enheden. Den offentlige kode leveres med et tomt register. Opbevar eksporter privat, da de kan indeholde navne, kontaktoplysninger og løndata.
 
 Registerimport under **Vogn & kollegaer → Importér register** bruger JSON-typen `arbejde-directory`, version 1. Den erstatter registeret og føjer vognnumre til dine valgmuligheder. Jobs, lønsatser, arbejdsregistreringer, ture, planer og indstillinger bevares. Gem eventuelt det gamle register med **Download register** først.
+
+Vælg **Affaldscentre → Importér liste (JSON)** for at åbne en privat liste med centre, varekoder og kundenumre. Appen viser ændringerne før gemning og bevarer eksisterende udfyldte felter. Du kan søge på navn, affaldstype, varekode eller kundenummer og redigere adresser og instruktioner for hvert center.
 
 En JSON-backup under **Indstillinger** indeholder registreringer, register, planer, personlige valg og henvisninger til vedhæftede billeder. Billedfilerne og den igangværende timer ligger separat. Import af en fuld JSON-backup gendanner hele datasættet. CSV-filerne er beregnet til brug i regneark.
 
@@ -119,7 +128,7 @@ Løn er estimeret brutto før skat og øvrige fradrag. Ukendte satser starter p�
 | `styles.css`, `brand.css`, `assets/brand/` | Responsivt orange/grafit-design og leveret grafik |
 | `domain.js`, `directory-domain.js`, `directory-ui.js` | Beregninger og lokalt register |
 | `pdf-reader.js`, `assets/pdfjs/` | Lokal PDF.js-læser med worker, tegnkort, fontdata og licenser |
-| `schedule-parser.js`, `schedule-domain.js`, `schedule-import-ui.js` | Genkendelse, kontrol og import af PDF-planer |
+| `schedule-parser.js`, `schedule-domain.js`, `schedule-import-ui.js` | Genkendelse, kontrol og import af arbejdsplaner |
 | `data-store.js` | Beskyttet lagring, gendannelse og kontrol af ændringer fra andre faner |
 | `timer-domain.js`, `timer-controller.js` | Daglig timer med separat lokal lagring |
 | `manifest.webmanifest`, `sw.js` | Installation og offlinefiler |

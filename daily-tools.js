@@ -8,13 +8,26 @@ export function plansForDate(state,date=todayISO(),{personal=true}={}){
   const weekday=new Date(`${date}T12:00:00Z`).getUTCDay()||7;
   const driver=state.settings.defaultDriver||'',vehicle=state.settings.defaultVehicle||'';
   return state.plans.filter(p=>p.date?p.date===date:date>=p.from&&date<=p.to&&(p.weekdays||[]).includes(weekday)).filter(p=>{
-    if(!personal||p.source?.type!=='pdf')return true;
+    if(!personal||!['pdf','calendar'].includes(p.source?.type))return true;
     if(driver){const match=matchSchedulePerson({person:p.driver||'',people:[p.driver,...(p.people||[])].filter(Boolean)},driver);return match.match&&!match.needsReview;}
     if(vehicle)return normalized(p.vehicle)===normalized(vehicle);
     return true;
   }).sort((a,b)=>(a.start||'99:99').localeCompare(b.start||'99:99')||String(a.vehicle).localeCompare(String(b.vehicle),'da',{numeric:true}));
 }
-export function entryForPlan(state,plan,date){return state.entries.find(e=>e.planId===plan.id&&e.date===date)||null;}
+export function entryForPlan(state,plan,date){
+  const linked=state.entries.find(entry=>entry.planId===plan.id&&entry.date===date);
+  if(linked)return linked;
+  if(plan.source?.type!=='calendar'||(plan.kind||'work')!=='work'||!normalized(plan.vehicle))return null;
+  const related=plansForDate(state,date,{personal:false}).filter(other=>other.jobId===plan.jobId&&
+    (other.kind||'work')==='work'&&(!normalized(other.vehicle)||normalized(other.vehicle)===normalized(plan.vehicle)));
+  if(related.length!==1||related[0].id!==plan.id)return null;
+  const matching=state.entries.filter(entry=>{
+    if(entry.planId||entry.type!=='work'||entry.jobId!==plan.jobId||entry.date!==date||normalized(entry.vehicle)!==normalized(plan.vehicle))return false;
+    const names=[entry.driver,...String(entry.colleague||'').split(',')].filter(name=>normalized(name));
+    return !names.length||names.some(name=>normalized(name)===normalized(plan.driver));
+  });
+  return matching.length===1?matching[0]:null;
+}
 export function upcomingPlans(state,days=28){const rows=[];for(let i=0;i<=days&&rows.length<7;i++){const date=addDays(todayISO(),i);for(const plan of plansForDate(state,date))if((plan.kind||'work')==='work')rows.push({plan,date});}return rows.slice(0,7);}
 function planRow(ctx,plan,date){const e=ctx.escape,entry=entryForPlan(ctx.state,plan,date),kind=plan.kind||'work';return `<article class="today-plan ${entry?'today-plan-done':''}"><div class="today-plan-date"><span>${e(dateLabel(date,{weekday:'short'}))}</span><b>${Number(date.slice(-2))}</b></div><div class="today-plan-copy"><span class="surface-label">${e(kindLabels[kind]||'Planlagt')}</span><h3>${e(plan.title||vehicleLabel(plan.vehicle))}</h3><p>${e([vehicleLabel(plan.vehicle),plan.driver||((plan.people||[]).join(' / '))].filter(Boolean).join(' · '))}</p><div class="today-plan-tags"><span class="badge">${plan.start&&plan.end?`${e(plan.start)} – ${e(plan.end)}`:'Tider ikke angivet'}</span>${plan.source?.type==='pdf'?`<span class="source-badge">PDF · uge ${Number(plan.source.week)||'—'}</span>`:''}${entry?'<span class="badge success">Registreret</span>':''}</div></div><button class="button ${entry?'secondary':'primary'}" data-planned-entry="${e(plan.id)}" data-plan-date="${date}">${entry?'Se registrering':kind==='work'?'Registrér dagen':'Se plan'}</button></article>`;}
 export function renderTimerHeader(ctx){const t=ctx.isDemo?null:ctx.timer.snapshot();if(!t)return '';return `<button class="timer-header-pill" data-nav="daglig" aria-label="Åbn din aktive arbejdsdag"><i class="status-dot"></i><span>${t.status==='stopped'?'Klar til at gemme':t.status==='paused'?'Pause':'På arbejde'}</span><b data-timer-elapsed>${formatTimerElapsed(ctx.timer.elapsed())}</b></button>`;}

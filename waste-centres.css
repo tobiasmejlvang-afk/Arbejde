@@ -1,0 +1,118 @@
+.waste-centre-search {
+  max-width: 520px;
+  margin: 0 0 12px;
+}
+
+.waste-centre-count {
+  display: block;
+  margin-bottom: 12px;
+}
+
+.waste-centre-list {
+  display: grid;
+  align-items: start;
+  gap: 18px;
+}
+
+.waste-centre-card {
+  min-width: 0;
+}
+
+.waste-centre-header,
+.waste-centre-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+}
+
+.waste-centre-header {
+  padding: 20px 22px;
+}
+
+.waste-centre-header h2,
+.waste-centre-address,
+.waste-centre-section,
+.waste-code-table td,
+.waste-import-conflicts li {
+  overflow-wrap: anywhere;
+}
+
+.waste-centre-header h2 {
+  margin: 0;
+}
+
+.waste-centre-address {
+  margin: 5px 0 0;
+}
+
+.waste-centre-section {
+  min-width: 0;
+  padding: 14px 22px;
+  border-top: 1px solid var(--border);
+}
+
+.waste-centre-section-heading {
+  margin-bottom: 10px;
+}
+
+.waste-centre-instructions p,
+.waste-code-instructions,
+.waste-centre-address {
+  white-space: pre-wrap;
+}
+
+.waste-centre-instructions p {
+  margin: 8px 0 0;
+}
+
+.waste-code-table {
+  min-width: 0;
+}
+
+.waste-code-table td:first-child {
+  width: 16%;
+}
+
+.waste-code-table td:last-child {
+  width: 1%;
+}
+
+.waste-code-table td:last-child .row-actions {
+  flex-wrap: wrap;
+}
+
+.waste-import-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  margin: 0 0 16px;
+}
+
+.waste-import-summary dt {
+  color: var(--muted);
+}
+
+.waste-import-summary dd {
+  margin: 3px 0 0;
+  font-weight: 700;
+}
+
+.waste-import-centres,
+.waste-import-conflicts {
+  margin: 8px 0 16px;
+  padding-left: 20px;
+}
+
+@media (max-width: 600px) {
+  .waste-centre-header,
+  .waste-centre-section {
+    padding-inline: 14px;
+  }
+
+  .waste-code-table td,
+  .waste-code-table th {
+    padding-inline: 8px;
+  }
+}

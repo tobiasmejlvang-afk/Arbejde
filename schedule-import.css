@@ -6,3 +6,6 @@
 @media(min-width:601px) and (max-width:1100px){.schedule-remember-target{grid-column:1/-1;grid-row:4}}
 .schedule-save-recovery{padding:25px 27px;border-color:#c08b45;background:linear-gradient(135deg,#4d3822,#282726);margin-bottom:24px;display:flex;align-items:center;gap:25px;flex-wrap:wrap}.schedule-save-recovery>div:first-child{flex:1;min-width:240px}.schedule-save-recovery h2{font-size:25px;margin:8px 0 14px;color:#ffcf92}.schedule-save-recovery p{font-size:12px;line-height:1.9;color:#d0b18a;max-width:780px;margin:9px 0}.schedule-recovery-actions{display:flex;gap:11px;flex-wrap:wrap}.schedule-recovery-actions .button{font-size:12px}@media(max-width:600px){.schedule-save-recovery{padding:23px 20px;gap:17px}.schedule-save-recovery h2{font-size:23px}.schedule-save-recovery p{font-size:11px}.schedule-recovery-actions{width:100%;gap:9px}.schedule-recovery-actions .button{font-size:11px;min-height:42px}}
 @media(prefers-reduced-motion:reduce){.schedule-dropzone{transition:none}}
+
+.schedule-dropzone .button + .button { margin: 6px; }
+.schedule-commit-area > .muted { margin: 8px 0 14px; font-size: 12px; }
