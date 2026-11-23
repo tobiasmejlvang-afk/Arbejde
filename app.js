@@ -9,7 +9,8 @@ import {createTimerController} from './timer-controller.js';
 import {createDataStore} from './data-store.js';
 import {createCloudAccount} from './cloud-account.js';
 import {bindEntryPhotos} from './photos.js';
-import {plansForDate,entryForPlan,renderTimerHeader,renderDaySummary,renderDailyTools} from './daily-tools.js';
+import {createUIComponents} from './ui-components.js';
+import {plansForDate,plannedRestDay,entryForPlan,renderTimerHeader,renderDaySummary,renderDailyTools} from './daily-tools.js';
 
 const KEY='arbejde.data.v1';
 const escape = value => String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -32,6 +33,7 @@ function toast(message){const node=document.querySelector('#toast');node.textCon
 function workspaceTimer(key){return createTimerController({key,onChange:()=>render(),onError:message=>toast(message)});}
 let timer=workspaceTimer('arbejde.timer.v1');
 timer.reconcile(state.entries);
+const uiComponents=createUIComponents({getState:()=>state,escape,uid,save:components=>{const previous=state.uiComponents;state.uiComponents=components;if(!save()){state.uiComponents=previous;render();return false;}return true;},rerender:render,notify:toast});
 function save(options){let saved=true;if(!demoMode){const result=dataStore.save(state,options);saved=result.ok;storageProblem=result.error||'';if(saved){timer.reconcile(state.entries);cloudAccount?.schedule();}else toast(storageProblem);}render();return saved;}
 function downloadOriginalData(){
   const raw=dataStore.rawRecovery;if(raw===null)return;
@@ -61,7 +63,7 @@ function modal(title,html,onSubmit,{submitLabel='Gem ændringer',guardData=true}
 }
 function formError(message){const node=editor.querySelector('#form-errors');if(node){node.hidden=false;node.textContent=message;node.scrollIntoView({block:'nearest'});}else toast(message);return false;}
 function showConfirm(title,description,callback){modal(title,`<p class="muted">${escape(description)}</p>`,()=>callback(),{submitLabel:'Bekræft'});}
-function ctx(){return {get state(){return state;},get needsRecovery(){return dataStore.needsRecovery||dataStore.readBlocked;},calcs,view,calendarDate,escape,save,navigate,openEntry,openPlannedEntry,timer,get isDemo(){return demoMode;},get syncCard(){return cloudAccount?.render()||'';},get dailyToolsHTML(){return renderDailyTools(this);},get daySummaryHTML(){return renderDaySummary(this);},toast,modal,closeModal,render,showConfirm,isInstalled:isAppInstalled(),setCalendarDate:date=>{calendarDate=date;render();},icon,types,schemes,periodMode,periodDate,jobFilter:reportJobFilter(),rows:selectedRows(),range:periodRange(),job:activeJob(),entryTable};}
+function ctx(){return {get state(){return state;},get needsRecovery(){return dataStore.needsRecovery||dataStore.readBlocked;},calcs,view,calendarDate,escape,save,uiComponents,navigate,openEntry,openPlannedEntry,timer,get isDemo(){return demoMode;},get syncCard(){return cloudAccount?.render()||'';},get dailyToolsHTML(){return renderDailyTools(this);},get daySummaryHTML(){return renderDaySummary(this);},toast,modal,closeModal,render,showConfirm,isInstalled:isAppInstalled(),setCalendarDate:date=>{calendarDate=date;render();},icon,types,schemes,periodMode,periodDate,jobFilter:reportJobFilter(),rows:selectedRows(),range:periodRange(),job:activeJob(),entryTable};}
 const options=(items,value)=>items.map(([v,label])=>`<option value="${escape(v)}" ${String(v)===String(value)?'selected':''}>${escape(label)}</option>`).join('');
 const field=(name,label,value='',type='text',extra='')=>`<label class="field">${label}<input name="${name}" type="${type}" value="${escape(value)}" ${extra}></label>`;
 const select=(name,label,items,value,extra='')=>`<label class="field">${label}<select name="${name}" ${extra}>${options(items,value)}</select></label>`;
@@ -86,7 +88,7 @@ function render(){
   const page={overblik:renderDashboard,daglig:renderDaily,loen:()=>renderWageWorkspace(ctx()),kalender:()=>renderCalendar(ctx()),planimport:()=>renderScheduleImport(ctx()),arbejde:()=>renderWork(ctx()),opret:()=>renderCreate(ctx()),job:()=>renderJobs(ctx()),fravaer:()=>renderAbsenceWorkspace(ctx()),vogntur:()=>renderDirectory(ctx()),ture:()=>renderRoutes(ctx()),affaldscentre:()=>renderWasteCentres(ctx()),statistik:()=>renderStatisticsWorkspace(ctx()),eksport:()=>renderExportWorkspace(ctx()),indstillinger:()=>renderSettings(ctx())}[view]();
   const navItem=([id,art,label])=>`<a href="#${id}" aria-label="${escape(label)}" title="${escape(label)}" ${view===id?'aria-current="page"':''} class="nav-link ${view===id?'active':''}">${brandArt(art,'nav-art')}<span>${label}</span>${id==='opret'?'<kbd>+</kbd>':''}</a>`;
   app.innerHTML=`<div class="app-frame ${menuOpen?'drawer-open':''}"><button class="drawer-scrim" data-action="close-menu" aria-label="Luk menu" ${menuOpen?'':'hidden'}></button><aside class="sidebar"><a class="brand" href="#overblik"><img src="./assets/brand/monogram.png" alt=""><span>Arbejde<small>Tid & Løn</small></span></a><div class="workspace-label">DIT ARBEJDSRUM</div><nav aria-label="Hovedmenu"><div class="nav-group">${nav.slice(0,4).map(navItem).join('')}</div><div class="workspace-label nav-section-label">ARBEJDE & PLANLÆGNING</div><div class="nav-group">${nav.slice(4,12).map(navItem).join('')}</div><div class="workspace-label nav-section-label">DIN APP</div><div class="nav-group">${nav.slice(12).map(navItem).join('')}</div></nav><div class="sidebar-bottom"><div class="local-note"><span class="status-dot"></span><div>${cloudAccount?.user?'Personligt arbejdsrum':'Personligt & lokalt'}<small>${cloudAccount?.user?'Dine gemte data følger din konto':'Dit arbejde bliver på din enhed'}</small></div></div><button class="profile" data-nav="indstillinger"><span class="avatar">${escape((state.settings.name||'M').slice(0,1).toUpperCase())}</span><span>${escape(state.settings.name||'Min profil')}<small>${escape(state.directory?.name||'Mit arbejdsrum')}</small></span>${icon('chevron',16)}</button></div></aside><div class="main-shell"><header class="topbar"><div class="topbar-left"><button class="icon-button menu-toggle" data-action="toggle-menu" aria-label="Åbn menu" aria-expanded="${menuOpen}">☰</button><a class="topbar-brand" href="#overblik"><img src="./assets/brand/logo-horizontal.png" alt="Arbejde – Tid & Løn"></a><div class="breadcrumb">Mit arbejdsrum ${icon('chevron',12)} <b>${escape(nav.find(n=>n[0]===view)?.[2])}</b></div></div><div class="topbar-right">${renderTimerHeader(ctx())}<span class="topbar-date">${escape(dateLabel(todayISO(),{weekday:'short',day:'numeric',month:'long',year:'numeric'}))}</span><span class="saved-indicator ${storageProblem?'unsaved':''}"><span class="status-dot"></span>${demoMode?'Demovisning':storageProblem?'Ikke gemt':cloudAccount?.user?'Gemt på enheden · Konto':'Gemt på enheden'}</span><button class="avatar small-avatar" data-nav="indstillinger" aria-label="Åbn profil">${escape((state.settings.name||'M').slice(0,1).toUpperCase())}</button></div></header><main id="main" tabindex="-1">${demoMode?`<div class="notice demo-notice"><span><b>Demovisning</b> · Eksempeldata. Ændringer gemmes ikke.</span><button class="text-button" data-action="exit-demo">Til mine egne data ${icon('arrow',15)}</button></div>`:!state.entries.length?`<div class="notice welcome-notice"><span><span class="status-dot"></span>Dit arbejdsrum er klar. Tilføj dine satser og registrér den første dag.</span><button class="text-button" data-action="demo">Prøv demovisning ${icon('arrow',15)}</button></div>`:''}${storageProblem?`<div class="notice error-notice" role="alert">${escape(storageProblem)}${dataStore.rawRecovery!==null?'<button class="text-button" data-action="download-original">Download oprindelige data</button>':''}<button class="text-button" data-nav="eksport">Åbn backup</button></div>`:''}${page}</main><footer class="app-footer"><span>Arbejde <b>· Tid & Løn</b></span><span>Dit personlige arbejdsrum</span></footer></div><nav class="mobile-nav" aria-label="Hurtig navigation">${nav.slice(0,4).map(([id,art,label])=>`<a href="#${id}" class="${view===id?'active':''}" ${view===id?'aria-current="page"':''}>${brandArt(art)}<span>${label}</span></a>`).join('')}<button data-action="toggle-menu" aria-label="Åbn alle sider" aria-expanded="${menuOpen}">${brandArt('settings')}<span>Mere</span></button></nav></div>`;
-  bindRoot();bindPanels(ctx());bindDirectory(ctx());bindScheduleImport(ctx());bindWasteCentres(ctx());timer.attach();
+  bindRoot();bindPanels(ctx());bindDirectory(ctx());bindScheduleImport(ctx());bindWasteCentres(ctx());uiComponents.bind(document);timer.attach();
 }
 function openPlannedEntry(plan,date){
   if(!plan)return;
@@ -94,13 +96,13 @@ function openPlannedEntry(plan,date){
   const existing=entryForPlan(state,plan,date);if(existing){openEntry(existing.id);return;}
   const kind=plan.kind||'work';
   if(!types[kind]){modal('Oplysning fra vagtplan',`<p>${escape(plan.title||'Bemanding ikke afklaret')}</p><p class="muted">Denne plan kan ses i kalenderen. Afklar bemandingen, før du registrerer en arbejdsdag.</p>`,()=>true);return;}
-  openEntry(null,{date,jobId:plan.jobId,scheme:plan.scheme,type:kind,start:plan.start||'',end:plan.end||'',normalStart:plan.start||'',normalEnd:plan.end||'',vehicle:plan.vehicle||'',route:plan.route||'',driver:plan.driver||state.settings.defaultDriver||'',colleague:plan.colleague||'',crew:plan.crew||'Alene',planId:plan.id,notes:plan.title||''});
+  openEntry(null,{date,jobId:plan.jobId,scheme:plan.scheme,type:kind,restDay:plan.restDay===true||plannedRestDay(state,plan.jobId,date),start:plan.start||'',end:plan.end||'',vehicle:plan.vehicle||'',route:plan.route||'',driver:plan.driver||state.settings.defaultDriver||'',colleague:plan.colleague||'',crew:plan.crew||'Alene',planId:plan.id,notes:plan.title||''});
 }
 function finishTimer(){
   const current=timer.snapshot();if(!current)return;
   const existing=state.entries.find(e=>e.timerId===current.id);if(existing){openEntry(existing.id);return;}
   const plan=state.plans.find(p=>p.id===current.planId);
-  try{openEntry(null,{...timer.preset(),normalStart:plan?.start||'',normalEnd:plan?.end||'',crew:plan?.crew||'Alene',colleague:plan?.colleague||'',notes:plan?.title||''});}catch(error){toast(error.message);}
+  try{openEntry(null,{...timer.preset(),crew:plan?.crew||'Alene',colleague:plan?.colleague||'',notes:plan?.title||''});}catch(error){toast(error.message);}
 }
 function timerAction(action){
   if(demoMode){toast('Skift til dine egne data for at starte en arbejdsdag.');return;}
@@ -129,6 +131,9 @@ function readEntry(form,id){
   const type=data.get('type'),work=type==='work';
   const jobId=data.get('jobId');
   const atl=work&&state.jobs.find(job=>job.id===jobId)?.overtimeRule==='atlFixed';
+  const existing=id?state.entries.find(entry=>entry.id===id):null;
+  const actualStart=work&&(!existing||existing.type!=='work'||existing.overtimeBasis==='actualStart');
+  const legacyNormal=atl&&!actualStart&&existing&&('normalStart'in existing||'normalEnd'in existing);
   const tier2=data.get('overtimeTier2Minutes');
   const extras=work?[...form.querySelectorAll('[data-extra]')].map(node=>{
     const value=name=>node.querySelector(`[name="extra-${name}"]`)?.value||'';
@@ -144,9 +149,11 @@ function readEntry(form,id){
     scheme:form.elements.scheme?.value||data.get('scheme')||state.jobs.find(job=>job.id===jobId)?.scheme||'4',
     start:work?data.get('start'):'',end:work?data.get('end'):'',breakMinutes:work?Number(data.get('breakMinutes')||0):0,
     ...(work&&tier2!==null&&tier2!==''?{overtimeTier2Minutes:Number(tier2)}:{}),
-    ...(atl?{
-      normalStart:String(data.get('normalStart')||''),normalEnd:String(data.get('normalEnd')||''),
-      normalDate:String(data.get('normalDate')||''),breakStart:String(data.get('breakStart')||'')
+    ...(actualStart?{overtimeBasis:'actualStart'}:{}),
+    ...(atl?{breakStart:String(data.get('breakStart')||'')}:{}),
+    ...(legacyNormal?{
+      normalStart:String(data.get('normalStart')??existing.normalStart??''),normalEnd:String(data.get('normalEnd')??existing.normalEnd??''),
+      normalDate:String(data.get('normalDate')??existing.normalDate??'')
     }:{}),
     vehicle:data.get('vehicle')||'',route:data.get('route')||'',crew:data.get('crew')||'Alene',
     planId:String(data.get('planId')||''),timerId:String(data.get('timerId')||''),
@@ -178,7 +185,7 @@ function openEntry(id = null, preset = {}) {
   const date = existing?.date || preset.date || todayISO();
   const defaultRoute = !existing && !preset.route && matchingRoutes(date).find(route => route.id === preferences?.defaultRouteId);
   const entry = {
-    date, jobId: job.id, type: 'work', scheme: job.scheme, restDay: false,
+    date, jobId: job.id, type: 'work', scheme: job.scheme, restDay: plannedRestDay(state,job.id,date),
     start: preferences?.defaultStart ?? '06:00', end: preferences?.defaultEnd ?? '14:00',
     breakMinutes: preferences?.defaultBreakMinutes ?? 0,
     vehicle: defaultRoute?.vehicle || state.settings.defaultVehicle || state.vehicles[0] || '',
@@ -187,10 +194,7 @@ function openEntry(id = null, preset = {}) {
     planId: '', timerId: '', empties: defaultRoute?.empties ?? 0,
     waste: defaultRoute?.waste || [], extras: [], notes: '', photos: [], ...preset, ...existing
   };
-  if (!existing && !entry.normalStart && !entry.normalEnd && !entry.restDay) {
-    entry.normalStart=job.normalStart||'';
-    entry.normalEnd=job.normalEnd||'';
-  }
+  const legacyNormal=existing&&existing.overtimeBasis!=='actualStart'&&('normalStart'in existing||'normalEnd'in existing);
   entry.crew = ({alone:'Alene', colleague:'Med kollega', substitute:'Afløser', temp:'Vikar'})[entry.crew] || entry.crew;
   const routeOptions = day => [['', 'Vælg en tur for datoen'], ...matchingRoutes(day).map(route => [route.id, route.name])];
   const wasteFields = wastes.map(waste => `<label><input type="checkbox" name="waste" value="${escape(waste)}" ${entry.waste.includes(waste) ? 'checked' : ''}><span>${escape(waste)}</span></label>`).join('');
@@ -209,18 +213,16 @@ function openEntry(id = null, preset = {}) {
         ${field('end', 'Sluttid', entry.end, 'time', 'required')}
         ${field('breakMinutes', 'Ubetalt pause (min.)', entry.breakMinutes, 'number', 'min="0" max="1440" step="1" required')}
         ${field('empties', 'Antal tømninger', entry.empties, 'number', 'min="0" max="100000" step="1" required')}
-        <fieldset class="full entry-waste-group" data-atl-times><legend>Normaltid til overarbejde</legend>
-          <div class="form-grid">
+        ${!legacyNormal?'<p class="muted small full">Overarbejde beregnes fra din faktiske starttid og arbejdsugens dagsnorm. Arbejde på den ugentlige fridag er fuldt overarbejde.</p>':''}
+        <fieldset class="full entry-waste-group" data-atl-times><legend>Pause og beregningsgrundlag</legend>
+          ${legacyNormal?`<details><summary>Tidligere gemt normaltid</summary><div class="form-grid">
             ${field('normalStart', 'Normal mødetid', entry.normalStart, 'time')}
             ${field('normalEnd', 'Normal sluttid', entry.normalEnd, 'time')}
           </div>
-          <p class="muted small">Angiv de aftalte tider, eller åbn dagen fra en vagtplan med tider. Ved en ekstravagt uden aftalt normaltid kan du angive sats 2 manuelt.</p>
+          <p class="muted small">Denne tidligere registrering bruger de gemte aftalte tider.</p>
+          ${field('normalDate', 'Dato for normal mødetid', entry.normalDate, 'date')}</details>`:''}
           ${field('breakStart', 'Start på ubetalt pause (valgfrit)', entry.breakStart, 'time')}
           <p class="muted small">Udfyld tidspunktet ved én sammenhængende pause. Ved flere pauser kan du gennemgå satsfordelingen i beregningen.</p>
-          <details${entry.normalDate?' open':''}>
-            <summary>Normaldato ved vagt over midnat</summary>
-            ${field('normalDate', 'Dato for normal mødetid', entry.normalDate, 'date')}
-          </details>
         </fieldset>
         <label class="field full">Overarbejde på sats 2 (min.)
           <input name="overtimeTier2Minutes" type="number" min="0" max="1439" step="1" value="${escape(entry.overtimeTier2Minutes)}" aria-describedby="overtime-tier-hint">
@@ -233,6 +235,7 @@ function openEntry(id = null, preset = {}) {
         ${field('driver', 'Chauffør', entry.driver, 'text', 'list="driver-options" maxlength="200"')}
         ${field('colleague', 'Kollega / medhjælper', entry.colleague, 'text', 'list="driver-options" maxlength="200"')}
         <p class="field-hint full" id="vehicle-context"></p>
+        <div class="full">${uiComponents.renderTarget('driving-crew')}</div>
         <fieldset class="full entry-waste-group"><legend>Affaldstyper</legend><div class="waste-choices entry-waste">${wasteFields}</div></fieldset>
       </div><div class="extra-section">
         <div class="panel-head"><div><h3>Dagens ekstraarbejde</h3><p>Tiden indgår i start/slut. Den lægges ikke til igen.</p></div></div>
@@ -285,6 +288,7 @@ function openEntry(id = null, preset = {}) {
 
   const form = editor.querySelector('form');
   const fields = form.elements;
+  uiComponents.bind(form);
   photos = bindEntryPhotos(form, entry.photos, {readRemote: meta => cloudAccount.readPhoto(meta), onError: toast});
   modalCleanup = () => photos.dispose();
   function updateVehicleContext() {
@@ -340,21 +344,10 @@ function openEntry(id = null, preset = {}) {
   fields.jobId.addEventListener('change', () => {
     const nextJob=state.jobs.find(item=>item.id===fields.jobId.value);
     fields.scheme.value=nextJob?.scheme||'4';
-    if (!existing && !fields.planId.value && !fields.restDay.checked) {
-      fields.normalStart.value=nextJob?.normalStart||'';
-      fields.normalEnd.value=nextJob?.normalEnd||'';
-    }
-  });
-  fields.restDay.addEventListener('change', () => {
-    if (fields.restDay.checked && !fields.planId.value) {
-      const selected=state.jobs.find(item=>item.id===fields.jobId.value);
-      if (fields.normalStart.value===selected?.normalStart && fields.normalEnd.value===selected?.normalEnd) {
-        fields.normalStart.value='';
-        fields.normalEnd.value='';
-      }
-    }
+    if (!existing) fields.restDay.checked=plannedRestDay(state,fields.jobId.value,fields.date.value);
   });
   fields.date.addEventListener('change', () => {
+    if (!existing) fields.restDay.checked=plannedRestDay(state,fields.jobId.value,fields.date.value);
     if (fields.routeTemplate) fields.routeTemplate.innerHTML = options(routeOptions(fields.date.value), '');
   });
   fields.routeTemplate?.addEventListener('change', () => {

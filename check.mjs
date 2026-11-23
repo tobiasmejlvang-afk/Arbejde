@@ -2,6 +2,8 @@ import { spawnSync } from 'node:child_process';
 
 const files = ['app.js', 'panels.js', 'experience.js', 'domain.js', 'directory-domain.js', 'directory-ui.js', 'sw.js', 'serve.mjs', 'pdf-reader.js', 'schedule-parser.js', 'schedule-domain.js', 'schedule-import-ui.js', 'timer-domain.js', 'timer-controller.js', 'daily-tools.js', 'data-store.js', 'cloud-account.js', 'cloud-sync.js', 'photos.js', 'waste-centres.js', 'waste-centres-ui.js'];
 let failed = false;
+files.push('ui-components-domain.js', 'ui-components.js');
+files.push('ui-component-icons.js');
 for (const file of files) {
   const result = spawnSync(process.execPath, ['--check', file], { stdio: 'inherit' });
   if (result.status !== 0) failed = true;

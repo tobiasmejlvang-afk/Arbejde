@@ -1,10 +1,10 @@
 import { defaultJob, defaultPreferences, uid, todayISO, addDays, payPeriod, money, hours, validateState, WASTE_TYPES } from './domain.js';
-import { entryForPlan } from './daily-tools.js';
+import { entryForPlan, plannedRestDay } from './daily-tools.js';
 
 const typeLabels = { work: 'Arbejdsdag', sick: 'Sygdom', off: 'Fridag', holiday: 'Ferie', freeHoliday: 'Feriefridag', absence: 'Fravær' };
 const weekdays = ['Mandag', 'Tirsdag', 'Onsdag', 'Torsdag', 'Fredag', 'Lørdag', 'Søndag'];
 const routeParities = { all: 'Alle uger', even: 'Lige uger', odd: 'Ulige uger' };
-const overtimeRules = { manual: 'Manuel fordeling', atlFixed: 'ATL · fast normal arbejdstid' };
+const overtimeRules = { manual: 'Manuel fordeling', atlFixed: 'ATL · automatisk satsfordeling' };
 const periodLabels = { month: 'Kalendermåned', '14days': '14 dage' };
 const pensionBases = { gross: 'Bruttoløn', grossWithAccruals: 'Bruttoløn med ferie- og frivalgsopsparing' };
 const jobNormalHours = job => job.normalStart && job.normalEnd ? `${job.normalStart}–${job.normalEnd}` : '';
@@ -100,7 +100,7 @@ function calendarPlanChip(ctx, plan, date) {
   const imported = Boolean(plan.source);
   const registered = plan.source?.type === 'calendar' && Boolean(entryForPlan(ctx.state, plan, date));
   const kind = plan.kind || 'work';
-  const labels = { work: 'Arbejde', off: 'Fridag', holiday: 'Ferie', freeHoliday: 'Feriefridag', sick: 'Sygdom', absence: 'Fravær', unassigned: 'Ingen bemanding', unknown: 'Uafklaret plan' };
+  const labels = { work: 'Arbejde', off: plan.restDay ? 'Ugentlig fridag' : 'Fridag', holiday: 'Ferie', freeHoliday: 'Feriefridag', sick: 'Sygdom', absence: 'Fravær', unassigned: 'Ingen bemanding', unknown: 'Uafklaret plan' };
   const people = plan.driver || (plan.people || []).join(', ');
   const vehicle = plan.vehicle ? /^\d+$/.test(String(plan.vehicle).trim()) ? `Vogn ${plan.vehicle}` : String(plan.vehicle) : '';
   const identity = [vehicle, people].filter(Boolean).join(' · ');
@@ -236,7 +236,7 @@ function renderRouteTemplates(ctx) {
     const label = attr(ctx, route.name);
     const id = attr(ctx, route.id);
     const details = [routeScheduleLabel(route), route.vehicle, `${route.empties.toLocaleString('da-DK')} tømninger`, route.waste.join(', ')].filter(Boolean);
-    return `<li><div class="route-template-copy"><strong>${label}</strong>${route.id === defaultRouteId ? ' <span class="badge">Standard</span>' : ''}<p class="muted small">${attr(ctx, details.join(' · '))}</p></div><div class="row-actions"><button type="button" class="button subtle" data-panel-action="edit-route-template" data-id="${id}" aria-label="Ret rute ${label}">Ret</button><button type="button" class="button subtle danger" data-panel-action="delete-route-template" data-id="${id}" aria-label="Slet rute ${label}">Slet</button></div></li>`;
+    return `<li><div class="route-template-copy"><strong>${label}</strong>${route.id === defaultRouteId ? ' <span class="badge">Standard</span>' : ''}<p class="muted small">${attr(ctx, details.join(' · '))}</p>${ctx.uiComponents?.renderTarget('route-card', route.id) || ''}</div><div class="row-actions"><button type="button" class="button subtle" data-panel-action="edit-route-template" data-id="${id}" aria-label="Ret rute ${label}">Ret</button><button type="button" class="button subtle danger" data-panel-action="delete-route-template" data-id="${id}" aria-label="Slet rute ${label}">Slet</button></div></li>`;
   });
   return `<section class="card settings-section settings-quick-card route-template-card full"><div class="settings-section-head panel-head"><div class="panel-title-group">${brandIcon('vehicle', 'panel-icon', 48)}<div><span class="surface-label">RUTEPLAN</span><h2>Gemte ruter</h2></div></div><button type="button" class="button secondary" data-panel-action="new-route-template">+ Opret rute</button></div><p class="settings-copy muted">Gem vogn, affaldstyper og antal tømninger for en fast ugedag. Vælg, om ruten kører hver uge eller skifter mellem lige og ulige uger.</p>${list.length ? `<ul class="settings-list">${list.join('')}</ul>` : '<div class="empty-state compact"><p>Du har endnu ingen gemte ruter.</p></div>'}</section>`;
 }
@@ -252,7 +252,7 @@ function renderQuickList(ctx, key, title, label, icon) {
 
 export function renderRoutes(ctx) {
   return `${pageHeading('vehicle', 'FASTE KØRSLER', 'Ture', 'Saml dine faste ruter og turnumre, så de er klar ved næste registrering.')}
-    <div class="settings-layout">${renderRouteTemplates(ctx)}<div class="full">${renderQuickList(ctx, 'routes', 'Turnumre', 'Turnummer', 'time')}</div></div>`;
+    <div class="settings-layout">${renderRouteTemplates(ctx)}<div class="full">${renderQuickList(ctx, 'routes', 'Turnumre', 'Turnummer', 'time')}</div><div class="full">${ctx.uiComponents?.renderTarget('route-setup') || ''}</div></div>`;
 }
 
 function renderPreferences(ctx) {
@@ -290,10 +290,10 @@ export function renderSettings(ctx) {
   return `${pageHeading('settings', 'ET ARBEJDSRUM, DER PASSER DIG', 'Indstillinger', 'Din profil, dine faste valg og dine data. Samlet på ét sted.')}
     <div class="settings-layout"><section class="card settings-section settings-profile-card full"><div class="settings-section-head"><div class="panel-title-group">${brandIcon('settings', 'panel-icon', 48)}<div><h2>Profil</h2></div></div></div><form id="settings-form" class="form-grid">${field(ctx, 'Dit navn', 'name', settings.name, { placeholder: 'Dit navn', maxLength: 200 })}${selectField(ctx, 'Standardjob', 'defaultJobId', settings.defaultJobId, [['', 'Vælg job'], ...ctx.state.jobs.map(job => [job.id, job.name])])}${settingsDefaults(ctx)}<div class="full"><button class="button primary" type="submit">Gem indstillinger</button></div></form></section>
     ${renderPreferences(ctx)}
-    <section class="settings-section full"><div class="settings-section-head"><div><h2>Vogne og ture</h2></div></div><div class="settings-quick-grid">${renderQuickList(ctx, 'vehicles', 'Vogne', 'Vognnummer', 'vehicle')}<section class="card settings-quick-card"><div class="panel-head"><div class="panel-title-group">${brandIcon('time')}<h3>Ture</h3></div><button type="button" class="button secondary" data-nav="ture">Åbn ture</button></div></section></div></section>
+    <section class="settings-section full"><div class="settings-section-head"><div><h2>Vogne og ture</h2></div></div><div class="settings-quick-grid">${renderQuickList(ctx, 'vehicles', 'Vogne', 'Vognnummer', 'vehicle')}<section class="card settings-quick-card"><div class="panel-head"><div class="panel-title-group">${brandIcon('time')}<h3>Ture</h3></div><button type="button" class="button secondary" data-nav="ture">Åbn ture</button></div></section></div>${ctx.uiComponents?.renderTarget('vehicles-routes') || ''}</section>
     ${ctx.syncCard || ''}
     <section class="card settings-section settings-data-card"><div class="settings-section-head"><div class="panel-title-group">${brandIcon('export', 'panel-icon', 48)}<div><h2>Sikkerhedskopi</h2></div></div></div><p class="settings-copy muted">Download en sikkerhedskopi for at gemme eller flytte dine registreringer.</p><div class="backup-actions"><button class="button primary" data-panel-action="backup">Download sikkerhedskopi</button><button class="button secondary" data-panel-action="import">Importér kopi</button><input id="backup-file" type="file" accept="application/json,.json" hidden></div><p class="muted field-hint">Import erstatter dine data efter bekræftelse. JSON-kopien indeholder henvisninger til billeder. Billedfilerne gemmes på enheden og på din konto efter synkronisering.</p></section>
-    <section class="card settings-section settings-install-card"><div class="settings-section-head"><div class="panel-title-group">${brandIcon('overview', 'panel-icon', 48)}<div><h2>Installér appen</h2></div></div></div><p class="settings-copy muted">Åbn Arbejde fra skrivebordet på Windows eller startskærmen på din telefon eller tablet.</p><button class="button secondary" type="button" data-action="install-app"${installed ? ' disabled' : ''}>${installed ? 'Appen er allerede installeret' : 'Installér app'}</button><p class="muted field-hint">Brug samme browserprofil til dine lokale data, og gem en sikkerhedskopi, før du rydder browserdata.</p></section></div>`;
+    <section class="card settings-section settings-install-card"><div class="settings-section-head"><div class="panel-title-group">${brandIcon('overview', 'panel-icon', 48)}<div><h2>Installér appen</h2></div></div></div><p class="settings-copy muted">Åbn Arbejde fra skrivebordet på Windows eller startskærmen på din telefon eller tablet.</p><button class="button secondary" type="button" data-action="install-app"${installed ? ' disabled' : ''}>${installed ? 'Appen er allerede installeret' : 'Installér app'}</button><p class="muted field-hint">Brug samme browserprofil til dine lokale data, og gem en sikkerhedskopi, før du rydder browserdata.</p></section>${ctx.uiComponents?.renderManager() || ''}</div>`;
 }
 
 export function renderCreate(ctx) {
@@ -397,7 +397,7 @@ function editJob(ctx, id) {
     ${field(ctx, 'Overarbejde · sats 1 (kr./t.)', 'overtimeRate', job.overtimeRate, { type: 'number', required: true, min: 0, step: 0.01 })}
     ${field(ctx, 'Overarbejde · sats 2 (kr./t.)', 'overtimeRate2', job.overtimeRate2 || '', { type: 'number', min: 0, max: 100000, step: 0.01, hint: 'Udfyld, hvis din kontrakt har sats 2.' })}
     ${selectField(ctx, 'Fordeling af overarbejde', 'overtimeRule', job.overtimeRule || 'manual', Object.entries(overtimeRules), true)}
-    <p class="muted field-hint full">Vælg ATL, hvis du følger reglen for fast normal arbejdstid. Hvis du udfylder begge tider nedenfor, foreslår appen dem på nye vagter. Du kan rette tiderne på den enkelte vagt.</p>
+    <p class="muted field-hint full">Vælg ATL for automatisk satsfordeling. Nye vagter beregnes fra faktisk start og arbejdsugens dagsnorm. Tidligere gemte normale tider bevares på historiske registreringer.</p>
     ${field(ctx, 'Normal starttid · valgfri', 'normalStart', job.normalStart, { type: 'time' })}
     ${field(ctx, 'Normal sluttid · valgfri', 'normalEnd', job.normalEnd, { type: 'time' })}
     ${selectField(ctx, 'Lønperiode', 'periodType', job.periodType, [['month', 'Kalendermåned'], ['14days', '14 dage']])}${field(ctx, 'Første dag i en 14-dages periode', 'periodAnchor', job.periodAnchor, { type: 'date', hint: 'Påkrævet ved 14-dages lønperiode.' })}${field(ctx, 'Løndag i måneden', 'payday', job.payday, { type: 'number', required: true, min: 1, max: 31, step: 1, hint: 'Bruges ved månedsløn. 31 betyder sidste dag i korte måneder.' })}${field(ctx, 'Dage fra periodens slutning til løndag', 'paydayOffset', job.paydayOffset, { type: 'number', required: true, min: 0, max: 60, step: 1, hint: 'Bruges ved 14-dages lønperiode.' })}
@@ -435,18 +435,22 @@ function editPlan(ctx, id) {
   let plan = id ? ctx.state.plans.find(item => item.id === id) : { id: uid(), title: '', jobId, from: todayISO(), to: addDays(todayISO(), 27), weekdays: Number(job?.scheme) === 3 ? [1, 2, 3] : Number(job?.scheme) === 4 ? [1, 2, 3, 4] : [1, 2, 3, 4, 5], scheme: job?.scheme || '3', start: '06:00', end: '14:00', vehicle: '', route: '' };
   if (!plan) return;
   const singleDate = Boolean(plan.date);
+  const planKind = plan.restDay ? 'weeklyOff' : plan.kind || 'work';
   if (plan.date) plan = { ...plan, from: plan.date, to: plan.date, weekdays: [safeDate(plan.date).getDay() || 7], scheme: plan.scheme || getJob(ctx, plan.jobId)?.scheme || '3' };
   const listSelect = (label, name, values, value) => selectField(ctx, label, name, value, [['', 'Ikke valgt'], ...Array.from(new Set([...values, ...(value ? [value] : [])])).map(text => [text, text])]);
   const dates = singleDate ? field(ctx, 'Dato', 'from', plan.from, { type: 'date', required: true }) : `${field(ctx, 'Fra dato', 'from', plan.from, { type: 'date', required: true })}${field(ctx, 'Til og med', 'to', plan.to, { type: 'date', required: true })}<fieldset class="field full weekday-picker"><legend>Arbejdsdage</legend><div class="check-group">${weekdays.map((day, index) => `<label><input type="checkbox" name="weekdays" value="${index + 1}"${checked(plan.weekdays.map(Number).includes(index + 1))}><span>${day.slice(0, 3)}</span></label>`).join('')}</div></fieldset>`;
-  ctx.modal(id ? 'Ret arbejdsplan' : 'Tilføj arbejdsplan', `<div class="form-grid">${field(ctx, 'Navn på planen', 'title', plan.title, { required: true, placeholder: 'Fx fast ugeplan' })}${selectField(ctx, 'Job', 'jobId', plan.jobId, ctx.state.jobs.map(item => [item.id, item.name]))}${dates}${schemeField(ctx, plan.scheme)}${listSelect('Vogn / arbejdssted', 'vehicle', ctx.state.vehicles, plan.vehicle)}${listSelect('Turnummer', 'route', ctx.state.routes, plan.route)}${field(ctx, 'Starttid · valgfrit', 'start', plan.start, { type: 'time' })}${field(ctx, 'Sluttid · valgfrit', 'end', plan.end, { type: 'time' })}<p class="muted field-hint full">Lad begge tidsfelter være tomme for en heldagsplan. Timer og løn tæller først, når du gemmer dagen som en registrering.</p></div>`, data => {
+  ctx.modal(id ? 'Ret arbejdsplan' : 'Tilføj arbejdsplan', `<div class="form-grid">${field(ctx, 'Navn på planen', 'title', plan.title, { required: true, placeholder: 'Fx fast ugeplan' })}${selectField(ctx, 'Job', 'jobId', plan.jobId, ctx.state.jobs.map(item => [item.id, item.name]))}${selectField(ctx, 'Plantype', 'planKind', planKind, [['work', 'Arbejdsdag'], ['weeklyOff', 'Ugentlig fridag'], ...Object.entries(typeLabels).filter(([key]) => key !== 'work'), ...(['unknown', 'unassigned'].includes(planKind) ? [[planKind, planKind === 'unknown' ? 'Uafklaret plan' : 'Ingen bemanding']] : [])])}${dates}${schemeField(ctx, plan.scheme)}${listSelect('Vogn / arbejdssted', 'vehicle', ctx.state.vehicles, plan.vehicle)}${listSelect('Turnummer', 'route', ctx.state.routes, plan.route)}<div class="full form-grid" data-plan-time-fields>${field(ctx, 'Starttid · valgfrit', 'start', plan.start, { type: 'time' })}${field(ctx, 'Sluttid · valgfrit', 'end', plan.end, { type: 'time' })}</div><p class="muted field-hint full">Ugentlige fridage gemmes uden tider. Arbejder du alligevel på dagen, foreslår registreringen fuldt overarbejde. Lad begge tidsfelter være tomme for en heldagsplan. Timer og løn tæller først efter registrering.</p></div>`, data => {
     const from = String(data.get('from') || '');
     const to = singleDate ? from : String(data.get('to') || '');
     const chosenDays = singleDate ? [safeDate(from).getDay() || 7] : data.getAll('weekdays').map(Number);
     if (!chosenDays.length) { ctx.toast('Vælg mindst én arbejdsdag.'); return false; }
     if (to < from) { ctx.toast('Slutdatoen skal være på eller efter startdatoen.'); return false; }
-    const start = String(data.get('start') || ''), end = String(data.get('end') || '');
+    const chosenKind = String(data.get('planKind') || planKind);
+    const restDay = chosenKind === 'weeklyOff';
+    const kind = restDay ? 'off' : chosenKind;
+    const start = kind === 'work' ? String(data.get('start') || '') : '', end = kind === 'work' ? String(data.get('end') || '') : '';
     if (Boolean(start) !== Boolean(end) || (start && start === end)) { ctx.toast('Angiv både start og slut, eller lad begge være tomme. Tiderne må ikke være ens.'); return false; }
-    const updated = { ...plan, title: String(data.get('title') || '').trim(), jobId: String(data.get('jobId')), from, to, weekdays: chosenDays, scheme: String(data.get('scheme')), start, end, vehicle: String(data.get('vehicle') || ''), route: String(data.get('route') || '') };
+    const updated = { ...plan, title: String(data.get('title') || '').trim(), jobId: String(data.get('jobId')), from, to, weekdays: chosenDays, scheme: String(data.get('scheme')), kind, restDay, start, end, vehicle: String(data.get('vehicle') || ''), route: String(data.get('route') || '') };
     if (singleDate) { updated.date = from; delete updated.from; delete updated.to; delete updated.weekdays; }
     else delete updated.date;
     const plans = ctx.state.plans.some(item => item.id === updated.id) ? ctx.state.plans.map(item => item.id === updated.id ? updated : item) : [...ctx.state.plans, updated];
@@ -455,6 +459,15 @@ function editPlan(ctx, id) {
     ctx.state.plans = plans;
     return saveChange(ctx, id ? 'Arbejdsplanen er opdateret.' : 'Arbejdsplanen er tilføjet.');
   });
+  const form = document.querySelector('dialog[open] form');
+  const kindInput = form?.elements?.planKind;
+  const updateTimes = () => {
+    const section = form.querySelector('[data-plan-time-fields]');
+    if (!section) return;
+    section.hidden = kindInput.value !== 'work';
+    for (const input of section.querySelectorAll('input')) input.disabled = section.hidden;
+  };
+  if (kindInput) { kindInput.addEventListener('change', updateTimes); updateTimes(); }
 }
 
 function editListItem(ctx, key, index) {
@@ -628,7 +641,7 @@ function act(ctx, button) {
     if (typeof ctx.openPlannedEntry === 'function') return ctx.openPlannedEntry(plan, date);
     const kind = plan.kind || 'work';
     if (['unassigned', 'unknown'].includes(kind)) { ctx.toast('Denne plan er kun til information. Kontrollér bemandingen, før du opretter en arbejdsdag.'); return; }
-    ctx.openEntry(null, { type: kind, date, jobId: plan.jobId, scheme: plan.scheme || getJob(ctx, plan.jobId)?.scheme || '3', start: plan.start || '', end: plan.end || '', vehicle: plan.vehicle || '', route: plan.route || '', driver: plan.driver || '', colleague: plan.colleague || '', crew: plan.crew || 'Alene' });
+    ctx.openEntry(null, { type: kind, restDay: plan.restDay === true || plannedRestDay(ctx.state, plan.jobId, date), planId: plan.id, date, jobId: plan.jobId, scheme: plan.scheme || getJob(ctx, plan.jobId)?.scheme || '3', start: plan.start || '', end: plan.end || '', vehicle: plan.vehicle || '', route: plan.route || '', driver: plan.driver || '', colleague: plan.colleague || '', crew: plan.crew || 'Alene' });
     return;
   }
   if (action === 'prev-month' || action === 'next-month' || action === 'current-month') {
