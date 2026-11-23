@@ -267,6 +267,31 @@ test('editing a single-day untimed PDF plan preserves its date shape and provena
   assert.equal(validateState(h.ctx.state).ok, true);
 });
 
+test('a weekly day off can be created, displayed and changed to an ordinary work plan', async t => {
+  const module = await panels(), h = harness(t, module);
+  const jobId = h.ctx.state.jobs[0].id;
+  h.act('new-plan');
+  assert.match(h.ctx.modalValue.html, /Ugentlig fridag/);
+  const values = {title: 'Ugentlig fridag', jobId, scheme: '4', from: '2028-03-01', to: '2028-03-31', weekdays: [5], planKind: 'weeklyOff', start: '06:00', end: '14:00'};
+  assert.equal(await h.submit(values), true);
+  const plan = h.ctx.state.plans[0];
+  assert.equal(plan.kind, 'off'); assert.equal(plan.restDay, true);
+  assert.equal(plan.start, ''); assert.equal(plan.end, '');
+  h.ctx.setCalendarDate('2028-03-10');
+  assert.match(module.renderCalendar(h.ctx), /Ugentlig fridag/);
+  let preset;
+  h.ctx.openPlannedEntry = undefined;
+  h.ctx.openEntry = (_id, value) => { preset = value; };
+  h.act('register-plan', {id: plan.id, date: '2028-03-10'});
+  assert.equal(preset.type, 'off'); assert.equal(preset.restDay, true);
+  assert.equal(preset.planId, plan.id);
+  h.act('edit-plan', {id: plan.id});
+  assert.equal(await h.submit({...values, planKind: 'work', start: '07:00', end: '16:15'}), true);
+  assert.equal(h.ctx.state.plans[0].restDay, false);
+  assert.equal(h.ctx.state.plans[0].kind, 'work');
+  assert.equal(h.ctx.state.plans[0].start, '07:00');
+});
+
 test('quick-list validation and failed-save retries cannot corrupt or delete the next item', async t => {
   const h = harness(t, await panels()); h.ctx.state.vehicles = ['101', '102'];
   h.act('new-list-item', { list: 'vehicles' });

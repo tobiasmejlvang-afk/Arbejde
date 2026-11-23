@@ -9,7 +9,7 @@ import {createTimerController} from './timer-controller.js';
 import {createDataStore} from './data-store.js';
 import {createCloudAccount} from './cloud-account.js';
 import {bindEntryPhotos} from './photos.js';
-import {plansForDate,entryForPlan,renderTimerHeader,renderDaySummary,renderDailyTools} from './daily-tools.js';
+import {plansForDate,plannedRestDay,entryForPlan,renderTimerHeader,renderDaySummary,renderDailyTools} from './daily-tools.js';
 
 const KEY='arbejde.data.v1';
 const escape = value => String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -94,13 +94,13 @@ function openPlannedEntry(plan,date){
   const existing=entryForPlan(state,plan,date);if(existing){openEntry(existing.id);return;}
   const kind=plan.kind||'work';
   if(!types[kind]){modal('Oplysning fra vagtplan',`<p>${escape(plan.title||'Bemanding ikke afklaret')}</p><p class="muted">Denne plan kan ses i kalenderen. Afklar bemandingen, før du registrerer en arbejdsdag.</p>`,()=>true);return;}
-  openEntry(null,{date,jobId:plan.jobId,scheme:plan.scheme,type:kind,start:plan.start||'',end:plan.end||'',normalStart:plan.start||'',normalEnd:plan.end||'',vehicle:plan.vehicle||'',route:plan.route||'',driver:plan.driver||state.settings.defaultDriver||'',colleague:plan.colleague||'',crew:plan.crew||'Alene',planId:plan.id,notes:plan.title||''});
+  openEntry(null,{date,jobId:plan.jobId,scheme:plan.scheme,type:kind,restDay:plan.restDay===true||plannedRestDay(state,plan.jobId,date),start:plan.start||'',end:plan.end||'',vehicle:plan.vehicle||'',route:plan.route||'',driver:plan.driver||state.settings.defaultDriver||'',colleague:plan.colleague||'',crew:plan.crew||'Alene',planId:plan.id,notes:plan.title||''});
 }
 function finishTimer(){
   const current=timer.snapshot();if(!current)return;
   const existing=state.entries.find(e=>e.timerId===current.id);if(existing){openEntry(existing.id);return;}
   const plan=state.plans.find(p=>p.id===current.planId);
-  try{openEntry(null,{...timer.preset(),normalStart:plan?.start||'',normalEnd:plan?.end||'',crew:plan?.crew||'Alene',colleague:plan?.colleague||'',notes:plan?.title||''});}catch(error){toast(error.message);}
+  try{openEntry(null,{...timer.preset(),crew:plan?.crew||'Alene',colleague:plan?.colleague||'',notes:plan?.title||''});}catch(error){toast(error.message);}
 }
 function timerAction(action){
   if(demoMode){toast('Skift til dine egne data for at starte en arbejdsdag.');return;}
@@ -129,6 +129,9 @@ function readEntry(form,id){
   const type=data.get('type'),work=type==='work';
   const jobId=data.get('jobId');
   const atl=work&&state.jobs.find(job=>job.id===jobId)?.overtimeRule==='atlFixed';
+  const existing=id?state.entries.find(entry=>entry.id===id):null;
+  const actualStart=work&&(!existing||existing.type!=='work'||existing.overtimeBasis==='actualStart');
+  const legacyNormal=atl&&!actualStart&&existing&&('normalStart'in existing||'normalEnd'in existing);
   const tier2=data.get('overtimeTier2Minutes');
   const extras=work?[...form.querySelectorAll('[data-extra]')].map(node=>{
     const value=name=>node.querySelector(`[name="extra-${name}"]`)?.value||'';
@@ -144,9 +147,11 @@ function readEntry(form,id){
     scheme:form.elements.scheme?.value||data.get('scheme')||state.jobs.find(job=>job.id===jobId)?.scheme||'4',
     start:work?data.get('start'):'',end:work?data.get('end'):'',breakMinutes:work?Number(data.get('breakMinutes')||0):0,
     ...(work&&tier2!==null&&tier2!==''?{overtimeTier2Minutes:Number(tier2)}:{}),
-    ...(atl?{
-      normalStart:String(data.get('normalStart')||''),normalEnd:String(data.get('normalEnd')||''),
-      normalDate:String(data.get('normalDate')||''),breakStart:String(data.get('breakStart')||'')
+    ...(actualStart?{overtimeBasis:'actualStart'}:{}),
+    ...(atl?{breakStart:String(data.get('breakStart')||'')}:{}),
+    ...(legacyNormal?{
+      normalStart:String(data.get('normalStart')??existing.normalStart??''),normalEnd:String(data.get('normalEnd')??existing.normalEnd??''),
+      normalDate:String(data.get('normalDate')??existing.normalDate??'')
     }:{}),
     vehicle:data.get('vehicle')||'',route:data.get('route')||'',crew:data.get('crew')||'Alene',
     planId:String(data.get('planId')||''),timerId:String(data.get('timerId')||''),
@@ -178,7 +183,7 @@ function openEntry(id = null, preset = {}) {
   const date = existing?.date || preset.date || todayISO();
   const defaultRoute = !existing && !preset.route && matchingRoutes(date).find(route => route.id === preferences?.defaultRouteId);
   const entry = {
-    date, jobId: job.id, type: 'work', scheme: job.scheme, restDay: false,
+    date, jobId: job.id, type: 'work', scheme: job.scheme, restDay: plannedRestDay(state,job.id,date),
     start: preferences?.defaultStart ?? '06:00', end: preferences?.defaultEnd ?? '14:00',
     breakMinutes: preferences?.defaultBreakMinutes ?? 0,
     vehicle: defaultRoute?.vehicle || state.settings.defaultVehicle || state.vehicles[0] || '',
@@ -187,10 +192,7 @@ function openEntry(id = null, preset = {}) {
     planId: '', timerId: '', empties: defaultRoute?.empties ?? 0,
     waste: defaultRoute?.waste || [], extras: [], notes: '', photos: [], ...preset, ...existing
   };
-  if (!existing && !entry.normalStart && !entry.normalEnd && !entry.restDay) {
-    entry.normalStart=job.normalStart||'';
-    entry.normalEnd=job.normalEnd||'';
-  }
+  const legacyNormal=existing&&existing.overtimeBasis!=='actualStart'&&('normalStart'in existing||'normalEnd'in existing);
   entry.crew = ({alone:'Alene', colleague:'Med kollega', substitute:'Afløser', temp:'Vikar'})[entry.crew] || entry.crew;
   const routeOptions = day => [['', 'Vælg en tur for datoen'], ...matchingRoutes(day).map(route => [route.id, route.name])];
   const wasteFields = wastes.map(waste => `<label><input type="checkbox" name="waste" value="${escape(waste)}" ${entry.waste.includes(waste) ? 'checked' : ''}><span>${escape(waste)}</span></label>`).join('');
@@ -209,18 +211,16 @@ function openEntry(id = null, preset = {}) {
         ${field('end', 'Sluttid', entry.end, 'time', 'required')}
         ${field('breakMinutes', 'Ubetalt pause (min.)', entry.breakMinutes, 'number', 'min="0" max="1440" step="1" required')}
         ${field('empties', 'Antal tømninger', entry.empties, 'number', 'min="0" max="100000" step="1" required')}
-        <fieldset class="full entry-waste-group" data-atl-times><legend>Normaltid til overarbejde</legend>
-          <div class="form-grid">
+        ${!legacyNormal?'<p class="muted small full">Overarbejde beregnes fra din faktiske starttid og arbejdsugens dagsnorm. Arbejde på den ugentlige fridag er fuldt overarbejde.</p>':''}
+        <fieldset class="full entry-waste-group" data-atl-times><legend>Pause og beregningsgrundlag</legend>
+          ${legacyNormal?`<details><summary>Tidligere gemt normaltid</summary><div class="form-grid">
             ${field('normalStart', 'Normal mødetid', entry.normalStart, 'time')}
             ${field('normalEnd', 'Normal sluttid', entry.normalEnd, 'time')}
           </div>
-          <p class="muted small">Angiv de aftalte tider, eller åbn dagen fra en vagtplan med tider. Ved en ekstravagt uden aftalt normaltid kan du angive sats 2 manuelt.</p>
+          <p class="muted small">Denne tidligere registrering bruger de gemte aftalte tider.</p>
+          ${field('normalDate', 'Dato for normal mødetid', entry.normalDate, 'date')}</details>`:''}
           ${field('breakStart', 'Start på ubetalt pause (valgfrit)', entry.breakStart, 'time')}
           <p class="muted small">Udfyld tidspunktet ved én sammenhængende pause. Ved flere pauser kan du gennemgå satsfordelingen i beregningen.</p>
-          <details${entry.normalDate?' open':''}>
-            <summary>Normaldato ved vagt over midnat</summary>
-            ${field('normalDate', 'Dato for normal mødetid', entry.normalDate, 'date')}
-          </details>
         </fieldset>
         <label class="field full">Overarbejde på sats 2 (min.)
           <input name="overtimeTier2Minutes" type="number" min="0" max="1439" step="1" value="${escape(entry.overtimeTier2Minutes)}" aria-describedby="overtime-tier-hint">
@@ -340,21 +340,10 @@ function openEntry(id = null, preset = {}) {
   fields.jobId.addEventListener('change', () => {
     const nextJob=state.jobs.find(item=>item.id===fields.jobId.value);
     fields.scheme.value=nextJob?.scheme||'4';
-    if (!existing && !fields.planId.value && !fields.restDay.checked) {
-      fields.normalStart.value=nextJob?.normalStart||'';
-      fields.normalEnd.value=nextJob?.normalEnd||'';
-    }
-  });
-  fields.restDay.addEventListener('change', () => {
-    if (fields.restDay.checked && !fields.planId.value) {
-      const selected=state.jobs.find(item=>item.id===fields.jobId.value);
-      if (fields.normalStart.value===selected?.normalStart && fields.normalEnd.value===selected?.normalEnd) {
-        fields.normalStart.value='';
-        fields.normalEnd.value='';
-      }
-    }
+    if (!existing) fields.restDay.checked=plannedRestDay(state,fields.jobId.value,fields.date.value);
   });
   fields.date.addEventListener('change', () => {
+    if (!existing) fields.restDay.checked=plannedRestDay(state,fields.jobId.value,fields.date.value);
     if (fields.routeTemplate) fields.routeTemplate.innerHTML = options(routeOptions(fields.date.value), '');
   });
   fields.routeTemplate?.addEventListener('change', () => {

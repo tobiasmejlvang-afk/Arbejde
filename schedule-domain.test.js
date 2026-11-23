@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {prepareScheduleImport, applyScheduleImport} from './schedule-domain.js';
-import {entryForPlan, plansForDate} from './daily-tools.js';
+import {entryForPlan, plansForDate, plannedRestDay} from './daily-tools.js';
 
 test('PDF.js fallback fingerprints import when Web Crypto is unavailable', () => {
   const state = emptyState();
@@ -12,6 +12,18 @@ test('PDF.js fallback fingerprints import when Web Crypto is unavailable', () =>
   assert.equal(result.state.plans[0].source.fileHash, input.source.fileHash);
 });
 import {emptyState, validateState, validateEntry} from './domain.js';
+
+test('recurring weekly days off suggest full overtime only for the planned job and dates', () => {
+  const state = emptyState(), jobId = state.jobs[0].id;
+  state.plans.push({id: 'weekly-off', jobId, title: 'Ugentlig fridag', from: '2028-03-01', to: '2028-03-31', weekdays: [1], kind: 'off', restDay: true, start: '', end: ''});
+  assert.equal(plannedRestDay(state, jobId, '2028-03-06'), true);
+  assert.equal(plannedRestDay(state, jobId, '2028-03-13'), true);
+  assert.equal(plannedRestDay(state, jobId, '2028-03-07'), false);
+  assert.equal(plannedRestDay(state, jobId, '2028-04-03'), false);
+  assert.equal(plannedRestDay(state, 'another-job', '2028-03-06'), false);
+  state.plans[0].restDay = false;
+  assert.equal(plannedRestDay(state, jobId, '2028-03-06'), false, 'ordinary days off do not imply weekly overtime');
+});
 
 // Synthetic data only. Never put actual imported schedules or private identities here.
 function setup() {

@@ -96,8 +96,9 @@ const MINUTES_PER_DAY = 1440;
 const positiveRemainder = minutes => minutes > 1e-9 ? minutes : 0;
 const hasNormalHours = entry => timeValue(entry.normalStart) !== null && timeValue(entry.normalEnd) !== null && entry.normalStart !== entry.normalEnd;
 const validNormalHours = entry => ((entry.normalStart ?? '') === '' && (entry.normalEnd ?? '') === '') || hasNormalHours(entry);
-const usesAtlSchedule = entry => own(entry, 'normalStart') || own(entry, 'normalEnd');
-const workDate = (entry, job) => job?.overtimeRule === 'atlFixed' && hasNormalHours(entry) && validDate(entry.normalDate) ? entry.normalDate : entry.date;
+const usesActualStart = entry => entry.overtimeBasis === 'actualStart';
+const usesAtlSchedule = entry => usesActualStart(entry) || own(entry, 'normalStart') || own(entry, 'normalEnd');
+const workDate = (entry, job) => !usesActualStart(entry) && job?.overtimeRule === 'atlFixed' && hasNormalHours(entry) && validDate(entry.normalDate) ? entry.normalDate : entry.date;
 
 function pauseInterval(entry, start, end) {
   const clock = timeValue(entry.breakStart);
@@ -128,13 +129,28 @@ function isSundayOrHoliday(date) {
   return [-3, -2, 1, 39, 50].includes(easterOffset) || (year < 2024 && easterOffset === 26);
 }
 
-function atlTimeBuckets(entry, normalDate, hasSchedule) {
+// New registrations consume the day's normal paid minutes from the actual start.
+// Carry the remaining capacity across split shifts, so gaps are never worked time.
+function actualStartBounds(entry, first, capacity, overtimeUsed) {
+  const [start, end] = interval(entry).map(value => value / 60000);
+  const pause = pauseInterval(entry, start, end);
+  const boundary = minutes => {
+    let point = start + minutes;
+    if (pause && pause[0] < point) point += pause[1] - pause[0];
+    return point;
+  };
+  return {normalClock: timeValue(first.start), normalStart: interval(first)[0] / 60000,
+    normalEnd: boundary(capacity), tier2Start: boundary(capacity + Math.max(0, 180 - overtimeUsed))};
+}
+
+function atlTimeBuckets(entry, normalDate, hasSchedule, actualBounds = null) {
   const [start, end] = interval(entry).map(value => value / 60000);
   const firstDay = Math.floor(start / MINUTES_PER_DAY) * MINUTES_PER_DAY;
-  const normalClock = hasSchedule ? timeValue(entry.normalStart) : null;
-  const normalStart = hasSchedule ? stamp(normalDate) / 60000 + normalClock : null;
-  const normalLength = hasSchedule ? (timeValue(entry.normalEnd) - normalClock + MINUTES_PER_DAY) % MINUTES_PER_DAY : null;
-  const normalEnd = hasSchedule ? normalStart + normalLength : null;
+  const normalClock = actualBounds?.normalClock ?? (hasSchedule ? timeValue(entry.normalStart) : null);
+  const normalStart = actualBounds?.normalStart ?? (hasSchedule ? stamp(normalDate) / 60000 + normalClock : null);
+  const normalLength = hasSchedule && !actualBounds ? (timeValue(entry.normalEnd) - normalClock + MINUTES_PER_DAY) % MINUTES_PER_DAY : null;
+  const normalEnd = actualBounds?.normalEnd ?? (hasSchedule ? normalStart + normalLength : null);
+  const tier2Start = actualBounds?.tier2Start ?? (normalEnd + 180);
   const pause = pauseInterval(entry, start, end);
   const buckets = {regular: 0, tier1: 0, tier2: 0, unclassified: 0};
   const specialEves = ['12-24', '12-31'];
@@ -156,14 +172,14 @@ function atlTimeBuckets(entry, normalDate, hasSchedule) {
     const cuts = [dayStart, dayEnd];
     if (isEve || followsEve) cuts.push(eveBoundary);
     if (halfDay) cuts.push(noon);
-    if (hasSchedule) cuts.push(normalStart - 60, normalStart, normalEnd, normalEnd + 180);
+    if (hasSchedule) cuts.push(normalStart - 60, normalStart, normalEnd, tier2Start);
     if (pause) cuts.push(...pause);
     const boundaries = cuts.filter(point => point >= dayStart && point <= dayEnd).sort((a, b) => a - b);
     for (let index = 1; index < boundaries.length; index++) {
       const from = boundaries[index - 1], to = boundaries[index];
       const middle = (from + to) / 2;
       if (pause && middle >= pause[0] && middle < pause[1]) continue;
-      if ((isEve && middle >= eveBoundary) || (followsEve && middle < eveBoundary) || (hasSchedule && middle >= normalEnd + 180)) {
+      if ((isEve && middle >= eveBoundary) || (followsEve && middle < eveBoundary) || (hasSchedule && middle >= tier2Start)) {
         buckets.tier2 += to - from;
       } else if (hasSchedule && ((middle >= normalStart - 60 && middle < normalStart) || middle >= normalEnd)) {
         buckets.tier1 += to - from;
@@ -218,17 +234,21 @@ export function calculateAll(state) {
     // Keep shifts and extra work in minutes until the split is complete.
     // Ignore floating-point residue from legacy fractional-minute values.
     let baseCapacity = extraDay ? 0 : norm * 60;
+    let overtimeUsed = 0;
     for (let index = 0; index < group.entries.length; index++) {
       const entry = group.entries[index], actual = shiftMinutes(entry);
       const explicitOT = (entry.extras || []).reduce((sum, extra) => sum + (extra.paidOvertime && numeric(extra.minutes) ? extra.minutes : 0), 0);
-      const hasSchedule = hasNormalHours(entry);
+      const actualStart = usesActualStart(entry);
+      const hasSchedule = actualStart || hasNormalHours(entry);
       const override = own(entry, 'overtimeTier2Minutes');
       const legacy = atl && !usesAtlSchedule(entry);
-      const timed = atl && !legacy && actual > 0 ? atlTimeBuckets(entry, group.date, hasSchedule) : null;
+      const bounds = actualStart && actual > 0 ? actualStartBounds(entry, first, baseCapacity, overtimeUsed) : null;
+      const timed = atl && !legacy && actual > 0 ? atlTimeBuckets(entry, group.date, hasSchedule, bounds) : null;
       const ordinary = Math.min(baseCapacity, Math.max(0, actual - explicitOT), timed?.buckets.regular ?? actual);
       baseCapacity = positiveRemainder(baseCapacity - ordinary);
       const guarantee = guaranteed && index === group.entries.length - 1 ? baseCapacity : 0;
       const overtime = positiveRemainder(actual - ordinary);
+      overtimeUsed += overtime;
       const requestedTier2 = entry.overtimeTier2Minutes ?? 0;
       const tier2 = Math.min(atl && !override ? (timed?.buckets.tier2 ?? 0) : requestedTier2, overtime);
       const warnings = [];
@@ -349,6 +369,7 @@ export function validateEntry(entry, state, skipConflicts = false) {
   if (!job) errors.push('Vælg et eksisterende job.');
   if (!ENTRY_TYPES.includes(entry.type)) errors.push('Vælg en gyldig registreringstype.');
   if (own(entry, 'restDay') && typeof entry.restDay !== 'boolean') errors.push('Hviledag skal være markeret som ja eller nej.');
+  if (own(entry, 'overtimeBasis') && entry.overtimeBasis !== 'actualStart') errors.push('Vælg en gyldig beregning fra arbejdsdagens start.');
   if (own(entry, 'overtimeTier2Minutes')) {
     const minutes = entry.overtimeTier2Minutes;
     if (!Number.isInteger(minutes) || minutes < 0 || minutes > 1439) errors.push('Overarbejde på sats 2 skal være et helt antal minutter mellem 0 og 1.439.');
@@ -409,9 +430,9 @@ export function validateEntry(entry, state, skipConflicts = false) {
 // Import only recognized keys and primitives. Unknown keys are rejected, including
 // prototype-like names, so backups cannot smuggle unrelated application state.
 const JOB_KEYS = ['id', 'name', 'employer', 'role', 'employment', 'startDate', 'scheme', 'hourlyRate', 'overtimeRate', 'overtimeRate2', 'overtimeRule', 'normalStart', 'normalEnd', 'periodType', 'periodAnchor', 'payday', 'paydayOffset', 'pensionEmployee', 'pensionEmployer', 'pensionBase', 'holidayPercent', 'choicePercent', 'holidayDays', 'freeHolidayDays', 'sickPayPercent', 'notes'];
-const ENTRY_KEYS = ['id', 'date', 'jobId', 'type', 'scheme', 'start', 'end', 'normalDate', 'normalStart', 'normalEnd', 'breakMinutes', 'breakStart', 'vehicle', 'route', 'crew', 'driver', 'colleague', 'planId', 'timerId', 'empties', 'waste', 'extras', 'notes', 'restDay', 'photos', 'overtimeTier2Minutes'];
+const ENTRY_KEYS = ['id', 'date', 'jobId', 'type', 'scheme', 'start', 'end', 'normalDate', 'normalStart', 'normalEnd', 'breakMinutes', 'breakStart', 'vehicle', 'route', 'crew', 'driver', 'colleague', 'planId', 'timerId', 'empties', 'waste', 'extras', 'notes', 'restDay', 'photos', 'overtimeTier2Minutes', 'overtimeBasis'];
 const EXTRA_KEYS = ['id', 'kind', 'task', 'minutes', 'vehicle', 'forVehicle', 'from', 'to', 'address', 'waste', 'container', 'paidOvertime'];
-const PLAN_KEYS = ['id', 'date', 'from', 'to', 'weekdays', 'jobId', 'scheme', 'title', 'start', 'end', 'vehicle', 'route', 'notes', 'driver', 'colleague', 'crew', 'people', 'kind', 'source'];
+const PLAN_KEYS = ['id', 'date', 'from', 'to', 'weekdays', 'jobId', 'scheme', 'title', 'start', 'end', 'vehicle', 'route', 'notes', 'driver', 'colleague', 'crew', 'people', 'kind', 'source', 'restDay'];
 const PLAN_SOURCE_KEYS = ['type', 'fileName', 'fileHash', 'page', 'row', 'importedAt', 'week', 'year'];
 const ROUTE_TEMPLATE_KEYS = ['id', 'name', 'weekParity', 'weekday', 'vehicle', 'waste', 'empties'];
 const PREFERENCE_KEYS = ['compact', 'defaultBreakMinutes', 'defaultStart', 'defaultEnd', 'defaultRouteId', 'reduceMotion', 'theme', 'navigation', 'startupView', ...PREFERENCE_VISIBILITY_KEYS];
@@ -507,6 +528,7 @@ export function validateState(data) {
     for (const key of ['driver', 'colleague', 'crew']) if (own(plan, key) && (typeof plan[key] !== 'string' || plan[key].length > 200)) errors.push(`${label}: ugyldig bemanding.`);
     if (own(plan, 'people') && (!Array.isArray(plan.people) || plan.people.length > 20 || plan.people.some(person => typeof person !== 'string' || !person.trim() || person.length > 200) || new Set(plan.people).size !== plan.people.length)) errors.push(`${label}: ugyldig personliste.`);
     if (own(plan, 'kind') && ![...ENTRY_TYPES, 'unknown', 'unassigned'].includes(plan.kind)) errors.push(`${label}: ugyldig plantype.`);
+    if (own(plan, 'restDay') && (typeof plan.restDay !== 'boolean' || (plan.restDay && plan.kind !== 'off'))) errors.push(`${label}: ugentlig fridag skal have typen fridag.`);
     if (own(plan, 'source') && schema(plan.source, PLAN_SOURCE_KEYS, `${label}, kilde`, errors)) {
       const source = plan.source;
       if (!['pdf', 'calendar'].includes(source.type) || typeof source.fileName !== 'string' || !source.fileName.trim() || source.fileName.length > 255 || /[<>:"/\\|?*]/.test(source.fileName)) errors.push(`${label}: ugyldigt kildefilnavn.`);

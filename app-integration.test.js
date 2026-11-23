@@ -108,6 +108,33 @@ test('saving sickness retains a disabled five-day scheme and its actual sick-pay
   assert.equal(calculateAll({...context.state, entries: [entry]})[0].paidHours, 7.4);
 });
 
+test('new workdays calculate from actual start without recording separate normal clock times', () => {
+  const {context} = harness();
+  const job = context.state.jobs[0];
+  Object.assign(job, {overtimeRule: 'atlFixed', normalStart: '05:00', normalEnd: '14:15'});
+  const fields = Object.fromEntries(Object.entries({type: 'work', date: '2028-03-06', jobId: job.id, scheme: '4', start: '07:30', end: '18:00', breakMinutes: '30', breakStart: '12:00', normalStart: '05:00', normalEnd: '14:15'}).map(([key, value]) => [key, {value}]));
+  const entry = context.readEntry({fields, elements: fields, querySelectorAll: () => []});
+  assert.equal(entry.overtimeBasis, 'actualStart');
+  assert.equal(entry.start, '07:30');
+  assert.equal(entry.breakStart, '12:00');
+  assert.equal('normalStart' in entry, false);
+  assert.equal('normalEnd' in entry, false);
+  assert.equal('normalDate' in entry, false);
+});
+
+test('editing a historical ATL workday retains its saved normal timetable', () => {
+  const {context} = harness();
+  const job = context.state.jobs[0]; job.overtimeRule = 'atlFixed';
+  const original = {id: 'historical-work', type: 'work', normalStart: '22:00', normalEnd: '07:15', normalDate: '2028-03-05'};
+  context.state.entries.push(original);
+  const fields = Object.fromEntries(Object.entries({type: 'work', date: '2028-03-06', jobId: job.id, scheme: '4', start: '00:00', end: '08:00', breakMinutes: '0'}).map(([key, value]) => [key, {value}]));
+  const entry = context.readEntry({fields, elements: fields, querySelectorAll: () => []}, original.id);
+  assert.equal(entry.normalStart, original.normalStart);
+  assert.equal(entry.normalEnd, original.normalEnd);
+  assert.equal(entry.normalDate, original.normalDate);
+  assert.equal('overtimeBasis' in entry, false);
+});
+
 test('a pending modal submission runs once despite a second submit event', async () => {
   const {context, editor} = harness();
   let calls = 0, finish;
