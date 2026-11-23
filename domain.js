@@ -1,6 +1,5 @@
 import {validateDirectory} from './directory-domain.js';
 import {validateWasteCentres} from './waste-centres.js';
-import {validateUIComponents} from './ui-components-domain.js';
 
 // All dates are date-only ISO values and all arithmetic uses UTC to avoid DST drift.
 // Contract assumptions are explicit: 12.33 × 3 = 36.99 h and 4 × 7.4 + 7 = 36.6 h,
@@ -55,7 +54,7 @@ export function defaultPreferences() {
 }
 export function emptyState() {
   const job = defaultJob();
-  return {version: 1, jobs: [job], entries: [], plans: [], vehicles: [], routes: [], routeTemplates: [], wasteCentres: [], directory: null, uiComponents: [], settings: {name: '', defaultJobId: job.id, preferences: defaultPreferences()}};
+  return {version: 1, jobs: [job], entries: [], plans: [], vehicles: [], routes: [], routeTemplates: [], wasteCentres: [], directory: null, settings: {name: '', defaultJobId: job.id, preferences: defaultPreferences()}};
 }
 export function demoState() {
   const state = emptyState();
@@ -446,7 +445,7 @@ function schema(object, allowed, label, errors) {
 }
 export function validateState(data) {
   const errors = [];
-  if (!schema(data, ['version', 'jobs', 'entries', 'plans', 'vehicles', 'routes', 'routeTemplates', 'wasteCentres', 'settings', 'directory', 'uiComponents'], 'Backup', errors)) return {ok: false, errors, state: null};
+  if (!schema(data, ['version', 'jobs', 'entries', 'plans', 'vehicles', 'routes', 'routeTemplates', 'wasteCentres', 'settings', 'directory'], 'Backup', errors)) return {ok: false, errors, state: null};
   if (data.version !== 1) errors.push('Backupversionen understøttes ikke.');
   for (const key of ['jobs', 'entries', 'plans', 'vehicles', 'routes']) if (!Array.isArray(data[key])) errors.push(`${key} skal være en liste.`);
   if (errors.length) return {ok: false, errors, state: null};
@@ -593,7 +592,5 @@ export function validateState(data) {
       else centres = {wasteCentres: result.centres};
     }
   }
-  const components = validateUIComponents(own(data, 'uiComponents') ? data.uiComponents : []);
-  if (!components.ok) errors.push(...components.errors);
-  return {ok: errors.length === 0, errors: [...new Set(errors)], state: errors.length ? null : {...JSON.parse(JSON.stringify(data)), directory, ...centres, uiComponents: components.components}};
+  return {ok: errors.length === 0, errors: [...new Set(errors)], state: errors.length ? null : {...JSON.parse(JSON.stringify(data)), directory, ...centres}};
 }

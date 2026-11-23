@@ -61,7 +61,7 @@ function harness() {
     escape: String, icon: () => '', toast: value => toasts.push(value), render: () => rendered++,
     uid: () => 'synthetic-entry', timer: {reconcile: entries => reconciled.push(entries)},
     calcs: [], view: 'overblik', calendarDate: '2028-03-06', periodMode: 'month', periodDate: '2028-03-06', jobFilter: '', menuOpen: true,
-    navigate() {}, openEntry() {}, openPlannedEntry() {}, uiComponents: {bind() {}, renderTarget() {return '';}, renderManager() {return '';}}, save() {return true;},
+    navigate() {}, openEntry() {}, openPlannedEntry() {}, save() {return true;},
     renderDailyTools: ctx => `daily:${ctx.state.settings.name}`, renderDaySummary: ctx => `summary:${ctx.state.settings.name}`,
     isAppInstalled: () => false, selectedRows: () => [], periodRange: () => ({}), activeJob: () => null, entryTable() {},
     types: {}, schemes: {},

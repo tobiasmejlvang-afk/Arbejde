@@ -9,7 +9,6 @@ import {createTimerController} from './timer-controller.js';
 import {createDataStore} from './data-store.js';
 import {createCloudAccount} from './cloud-account.js';
 import {bindEntryPhotos} from './photos.js';
-import {createUIComponents} from './ui-components.js';
 import {plansForDate,plannedRestDay,entryForPlan,renderTimerHeader,renderDaySummary,renderDailyTools} from './daily-tools.js';
 
 const KEY='arbejde.data.v1';
@@ -33,7 +32,6 @@ function toast(message){const node=document.querySelector('#toast');node.textCon
 function workspaceTimer(key){return createTimerController({key,onChange:()=>render(),onError:message=>toast(message)});}
 let timer=workspaceTimer('arbejde.timer.v1');
 timer.reconcile(state.entries);
-const uiComponents=createUIComponents({getState:()=>state,escape,uid,save:components=>{const previous=state.uiComponents;state.uiComponents=components;if(!save()){state.uiComponents=previous;render();return false;}return true;},rerender:render,notify:toast});
 function save(options){let saved=true;if(!demoMode){const result=dataStore.save(state,options);saved=result.ok;storageProblem=result.error||'';if(saved){timer.reconcile(state.entries);cloudAccount?.schedule();}else toast(storageProblem);}render();return saved;}
 function downloadOriginalData(){
   const raw=dataStore.rawRecovery;if(raw===null)return;
@@ -63,7 +61,7 @@ function modal(title,html,onSubmit,{submitLabel='Gem ændringer',guardData=true}
 }
 function formError(message){const node=editor.querySelector('#form-errors');if(node){node.hidden=false;node.textContent=message;node.scrollIntoView({block:'nearest'});}else toast(message);return false;}
 function showConfirm(title,description,callback){modal(title,`<p class="muted">${escape(description)}</p>`,()=>callback(),{submitLabel:'Bekræft'});}
-function ctx(){return {get state(){return state;},get needsRecovery(){return dataStore.needsRecovery||dataStore.readBlocked;},calcs,view,calendarDate,escape,save,uiComponents,navigate,openEntry,openPlannedEntry,timer,get isDemo(){return demoMode;},get syncCard(){return cloudAccount?.render()||'';},get dailyToolsHTML(){return renderDailyTools(this);},get daySummaryHTML(){return renderDaySummary(this);},toast,modal,closeModal,render,showConfirm,isInstalled:isAppInstalled(),setCalendarDate:date=>{calendarDate=date;render();},icon,types,schemes,periodMode,periodDate,jobFilter:reportJobFilter(),rows:selectedRows(),range:periodRange(),job:activeJob(),entryTable};}
+function ctx(){return {get state(){return state;},get needsRecovery(){return dataStore.needsRecovery||dataStore.readBlocked;},calcs,view,calendarDate,escape,save,navigate,openEntry,openPlannedEntry,timer,get isDemo(){return demoMode;},get syncCard(){return cloudAccount?.render()||'';},get dailyToolsHTML(){return renderDailyTools(this);},get daySummaryHTML(){return renderDaySummary(this);},toast,modal,closeModal,render,showConfirm,isInstalled:isAppInstalled(),setCalendarDate:date=>{calendarDate=date;render();},icon,types,schemes,periodMode,periodDate,jobFilter:reportJobFilter(),rows:selectedRows(),range:periodRange(),job:activeJob(),entryTable};}
 const options=(items,value)=>items.map(([v,label])=>`<option value="${escape(v)}" ${String(v)===String(value)?'selected':''}>${escape(label)}</option>`).join('');
 const field=(name,label,value='',type='text',extra='')=>`<label class="field">${label}<input name="${name}" type="${type}" value="${escape(value)}" ${extra}></label>`;
 const select=(name,label,items,value,extra='')=>`<label class="field">${label}<select name="${name}" ${extra}>${options(items,value)}</select></label>`;
@@ -88,7 +86,7 @@ function render(){
   const page={overblik:renderDashboard,daglig:renderDaily,loen:()=>renderWageWorkspace(ctx()),kalender:()=>renderCalendar(ctx()),planimport:()=>renderScheduleImport(ctx()),arbejde:()=>renderWork(ctx()),opret:()=>renderCreate(ctx()),job:()=>renderJobs(ctx()),fravaer:()=>renderAbsenceWorkspace(ctx()),vogntur:()=>renderDirectory(ctx()),ture:()=>renderRoutes(ctx()),affaldscentre:()=>renderWasteCentres(ctx()),statistik:()=>renderStatisticsWorkspace(ctx()),eksport:()=>renderExportWorkspace(ctx()),indstillinger:()=>renderSettings(ctx())}[view]();
   const navItem=([id,art,label])=>`<a href="#${id}" aria-label="${escape(label)}" title="${escape(label)}" ${view===id?'aria-current="page"':''} class="nav-link ${view===id?'active':''}">${brandArt(art,'nav-art')}<span>${label}</span>${id==='opret'?'<kbd>+</kbd>':''}</a>`;
   app.innerHTML=`<div class="app-frame ${menuOpen?'drawer-open':''}"><button class="drawer-scrim" data-action="close-menu" aria-label="Luk menu" ${menuOpen?'':'hidden'}></button><aside class="sidebar"><a class="brand" href="#overblik"><img src="./assets/brand/monogram.png" alt=""><span>Arbejde<small>Tid & Løn</small></span></a><div class="workspace-label">DIT ARBEJDSRUM</div><nav aria-label="Hovedmenu"><div class="nav-group">${nav.slice(0,4).map(navItem).join('')}</div><div class="workspace-label nav-section-label">ARBEJDE & PLANLÆGNING</div><div class="nav-group">${nav.slice(4,12).map(navItem).join('')}</div><div class="workspace-label nav-section-label">DIN APP</div><div class="nav-group">${nav.slice(12).map(navItem).join('')}</div></nav><div class="sidebar-bottom"><div class="local-note"><span class="status-dot"></span><div>${cloudAccount?.user?'Personligt arbejdsrum':'Personligt & lokalt'}<small>${cloudAccount?.user?'Dine gemte data følger din konto':'Dit arbejde bliver på din enhed'}</small></div></div><button class="profile" data-nav="indstillinger"><span class="avatar">${escape((state.settings.name||'M').slice(0,1).toUpperCase())}</span><span>${escape(state.settings.name||'Min profil')}<small>${escape(state.directory?.name||'Mit arbejdsrum')}</small></span>${icon('chevron',16)}</button></div></aside><div class="main-shell"><header class="topbar"><div class="topbar-left"><button class="icon-button menu-toggle" data-action="toggle-menu" aria-label="Åbn menu" aria-expanded="${menuOpen}">☰</button><a class="topbar-brand" href="#overblik"><img src="./assets/brand/logo-horizontal.png" alt="Arbejde – Tid & Løn"></a><div class="breadcrumb">Mit arbejdsrum ${icon('chevron',12)} <b>${escape(nav.find(n=>n[0]===view)?.[2])}</b></div></div><div class="topbar-right">${renderTimerHeader(ctx())}<span class="topbar-date">${escape(dateLabel(todayISO(),{weekday:'short',day:'numeric',month:'long',year:'numeric'}))}</span><span class="saved-indicator ${storageProblem?'unsaved':''}"><span class="status-dot"></span>${demoMode?'Demovisning':storageProblem?'Ikke gemt':cloudAccount?.user?'Gemt på enheden · Konto':'Gemt på enheden'}</span><button class="avatar small-avatar" data-nav="indstillinger" aria-label="Åbn profil">${escape((state.settings.name||'M').slice(0,1).toUpperCase())}</button></div></header><main id="main" tabindex="-1">${demoMode?`<div class="notice demo-notice"><span><b>Demovisning</b> · Eksempeldata. Ændringer gemmes ikke.</span><button class="text-button" data-action="exit-demo">Til mine egne data ${icon('arrow',15)}</button></div>`:!state.entries.length?`<div class="notice welcome-notice"><span><span class="status-dot"></span>Dit arbejdsrum er klar. Tilføj dine satser og registrér den første dag.</span><button class="text-button" data-action="demo">Prøv demovisning ${icon('arrow',15)}</button></div>`:''}${storageProblem?`<div class="notice error-notice" role="alert">${escape(storageProblem)}${dataStore.rawRecovery!==null?'<button class="text-button" data-action="download-original">Download oprindelige data</button>':''}<button class="text-button" data-nav="eksport">Åbn backup</button></div>`:''}${page}</main><footer class="app-footer"><span>Arbejde <b>· Tid & Løn</b></span><span>Dit personlige arbejdsrum</span></footer></div><nav class="mobile-nav" aria-label="Hurtig navigation">${nav.slice(0,4).map(([id,art,label])=>`<a href="#${id}" class="${view===id?'active':''}" ${view===id?'aria-current="page"':''}>${brandArt(art)}<span>${label}</span></a>`).join('')}<button data-action="toggle-menu" aria-label="Åbn alle sider" aria-expanded="${menuOpen}">${brandArt('settings')}<span>Mere</span></button></nav></div>`;
-  bindRoot();bindPanels(ctx());bindDirectory(ctx());bindScheduleImport(ctx());bindWasteCentres(ctx());uiComponents.bind(document);timer.attach();
+  bindRoot();bindPanels(ctx());bindDirectory(ctx());bindScheduleImport(ctx());bindWasteCentres(ctx());timer.attach();
 }
 function openPlannedEntry(plan,date){
   if(!plan)return;
@@ -235,7 +233,6 @@ function openEntry(id = null, preset = {}) {
         ${field('driver', 'Chauffør', entry.driver, 'text', 'list="driver-options" maxlength="200"')}
         ${field('colleague', 'Kollega / medhjælper', entry.colleague, 'text', 'list="driver-options" maxlength="200"')}
         <p class="field-hint full" id="vehicle-context"></p>
-        <div class="full">${uiComponents.renderTarget('driving-crew')}</div>
         <fieldset class="full entry-waste-group"><legend>Affaldstyper</legend><div class="waste-choices entry-waste">${wasteFields}</div></fieldset>
       </div><div class="extra-section">
         <div class="panel-head"><div><h3>Dagens ekstraarbejde</h3><p>Tiden indgår i start/slut. Den lægges ikke til igen.</p></div></div>
@@ -288,7 +285,6 @@ function openEntry(id = null, preset = {}) {
 
   const form = editor.querySelector('form');
   const fields = form.elements;
-  uiComponents.bind(form);
   photos = bindEntryPhotos(form, entry.photos, {readRemote: meta => cloudAccount.readPhoto(meta), onError: toast});
   modalCleanup = () => photos.dispose();
   function updateVehicleContext() {
