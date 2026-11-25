@@ -15,6 +15,25 @@ function context() {
   return {state, job, range, calendarDate: '2026-11-03', periodDate: '2026-11-03', periodMode: 'pay', jobFilter: job.id, rows: [], calcs: [], escape, icon: () => '', render() {}, toasts: [], toast(message) { this.toasts.push(message); }, save() { return true; }};
 }
 
+test('calendar work chips show the actual truck with complete accessible times and escaped vehicle text', () => {
+  const ctx = context();
+  const longVehicle = 'Et langt arbejdssted med <special>&tegn '.repeat(2);
+  const entry = {id: 'vehicle-day', jobId: ctx.job.id, type: 'work', date: '2026-11-03', scheme: '4', start: '06:00', end: '14:00', breakMinutes: 0, vehicle: '73', crew: 'Alene', empties: 0, waste: [], extras: []};
+  ctx.state.entries = [entry, {...entry, id: 'named-vehicle-day', date: '2026-11-04', vehicle: longVehicle}];
+  ctx.calcs = calculateAll(ctx.state);
+  const html = renderCalendar(ctx);
+  const numericChip = html.match(/<button[^>]*data-id="vehicle-day"[^>]*>[\s\S]*?<\/button>/)?.[0];
+  assert.ok(numericChip, 'the registered workday is present');
+  assert.match(numericChip, /calendar-chip-compact" aria-hidden="true">V73<\/span>/);
+  assert.match(numericChip, /calendar-entry-vehicle">Vogn 73<\/small>/);
+  assert.match(numericChip, /aria-label="[^\"]*06:00–14:00[^\"]*Vogn 73/);
+  assert.match(numericChip, /data-panel-action="edit-entry"/);
+  const namedChip = html.match(/<button[^>]*data-id="named-vehicle-day"[^>]*>[\s\S]*?<\/button>/)?.[0];
+  assert.ok(namedChip.includes(escape(longVehicle.trim())));
+  assert.ok(!namedChip.includes('<special>'));
+  assert.match(namedChip, /calendar-chip-compact" aria-hidden="true">Vagt<\/span>/);
+});
+
 function harness(t) {
   const ctx = context();
   const previousDocument = globalThis.document;

@@ -1,5 +1,14 @@
 .calendar-chip-compact { display: none; }
 
+.calendar-entry .calendar-entry-vehicle {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
 .calendar-quick-actions {
   display: flex;
   flex-wrap: wrap;
@@ -160,6 +169,13 @@
 
   .calendar-chip .calendar-chip-detail { display: none; }
   .calendar-chip .calendar-chip-compact { display: inline; }
+  .calendar-entry .calendar-chip-compact {
+    display: block;
+    max-inline-size: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
   .calendar-chip, .calendar-chip.calendar-payday {
     font-size: 9px;
     line-height: 1.25;

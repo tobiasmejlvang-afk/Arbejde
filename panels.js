@@ -142,6 +142,22 @@ function calendarPlanChip(ctx, plan, date) {
   return `<button class="calendar-chip calendar-plan${imported ? ' calendar-pdf' : ''}${['unassigned', 'unknown'].includes(kind) ? ' calendar-informational' : ''}" data-panel-action="register-plan" data-id="${attr(ctx, plan.id)}" data-date="${date}" title="${attr(ctx, `${labels[kind] || 'Plan'} · ${identity || plan.title || 'Arbejdsplan'} · ${time}`)}" aria-label="${attr(ctx, `${registered ? 'Registreret · ' : ''}${labels[kind] || 'Plan'} · ${identity || plan.title || 'Arbejdsplan'} · ${time}`)}"><span class="calendar-chip-compact" aria-hidden="true">${attr(ctx, compact)}</span><span class="calendar-chip-detail">${attr(ctx, registered ? 'Registreret · se arbejdsdag' : kind === 'work' ? time : labels[kind] || 'Plan')}</span>${identity ? `<small class="calendar-chip-detail">${attr(ctx, identity)}</small>` : ''}<small class="calendar-chip-meta calendar-chip-detail">${attr(ctx, plan.title || jobName(ctx, plan.jobId))}</small>${imported ? `<span class="source-badge calendar-chip-detail">${plan.source.type === 'pdf' ? 'PDF' : 'Kalenderfil'}${plan.source.week ? ` · uge ${Number(plan.source.week)}` : ''}</span>` : ''}</button>`;
 }
 
+function calendarEntryChip(ctx, entry, calculation) {
+  const work = entry.type === 'work';
+  const type = typeLabels[entry.type] || 'Registrering';
+  const vehicle = String(entry.vehicle || '').trim();
+  const numericVehicle = /^\d+$/.test(vehicle);
+  const vehicleLabel = numericVehicle ? `Vogn ${vehicle}` : vehicle;
+  let compact = entry.type === 'freeHoliday' ? 'Fri' : type;
+  if (work) compact = numericVehicle ? `V${vehicle}` : 'Vagt';
+  const label = [type, dateText(entry.date), work && `${entry.start || ''}–${entry.end || ''}`,
+    work && vehicleLabel, jobName(ctx, entry.jobId)].filter(Boolean).join(' · ');
+  const detail = work
+    ? `${attr(ctx, entry.start || '')}–${attr(ctx, entry.end || '')}<small>${attr(ctx, hours(calculation?.actualHours || 0))}${number(calculation?.overtimeHours) > 0 ? ' · OT' : ''}</small>${vehicleLabel ? `<small class="calendar-entry-vehicle">${attr(ctx, vehicleLabel)}</small>` : ''}`
+    : attr(ctx, type);
+  return `<button class="calendar-chip calendar-entry${work ? '' : ' calendar-absence'}" data-panel-action="edit-entry" data-id="${attr(ctx, entry.id)}" title="${attr(ctx, label)}" aria-label="${attr(ctx, label)}"><span class="calendar-chip-compact" aria-hidden="true">${attr(ctx, compact)}</span><span class="calendar-chip-detail">${detail}</span></button>`;
+}
+
 function paydaysIn(ctx, from, to) {
   const result = new Map();
   for (const job of ctx.state.jobs) {
@@ -185,7 +201,7 @@ export function renderCalendar(ctx) {
       const outside = date.slice(0, 7) !== monthISO.slice(0, 7);
       return `<div class="calendar-cell${outside ? ' outside' : ''}${date === todayISO() ? ' today' : ''}"><button class="calendar-day-number" data-panel-action="calendar-add" data-date="${date}" aria-label="${ui.calendarMode === 'weeklyOff' ? 'Markér ugentlig fridag' : 'Registrer'} ${attr(ctx, dateText(date))}">${safeDate(date).getDate()}</button>
         ${dailyPaydays.map(job => `<span class="calendar-chip calendar-payday" title="${attr(ctx, `Løndag · ${job.name}`)}"><span class="calendar-chip-detail">Lønudbetaling</span><span class="calendar-chip-compact">Løn</span></span>`).join('')}
-        ${entries.map(entry => `<button class="calendar-chip calendar-entry ${entry.type === 'work' ? '' : 'calendar-absence'}" data-panel-action="edit-entry" data-id="${attr(ctx, entry.id)}" title="${attr(ctx, `${typeLabels[entry.type] || 'Registrering'} · ${jobName(ctx, entry.jobId)}`)}" aria-label="${attr(ctx, `${typeLabels[entry.type] || 'Registrering'} · ${dateText(entry.date)}`)}"><span class="calendar-chip-compact" aria-hidden="true">${attr(ctx, entry.type === 'work' ? 'Vagt' : entry.type === 'freeHoliday' ? 'Fri' : typeLabels[entry.type] || 'Fravær')}</span><span class="calendar-chip-detail">${entry.type === 'work' ? `${attr(ctx, entry.start || '')}–${attr(ctx, entry.end || '')}<small>${attr(ctx, hours(calcMap.get(entry.id)?.actualHours || 0))}${number(calcMap.get(entry.id)?.overtimeHours) > 0 ? ' · OT' : ''}</small>` : attr(ctx, typeLabels[entry.type] || 'Fravær')}</span></button>`).join('')}
+        ${entries.map(entry => calendarEntryChip(ctx, entry, calcMap.get(entry.id))).join('')}
         ${plans.map(plan => calendarPlanChip(ctx, plan, date)).join('')}
       </div>`;
     }).join('')}</div></div><div class="calendar-help"><p>Vælg handlingen ovenfor, og tryk på datoen. Åbn en vagt for at se detaljerne.</p><span class="muted">Løndage følger dine kontrakter.</span></div></section>
