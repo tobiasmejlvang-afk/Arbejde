@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
-import {emptyState, demoState, calculateAll, defaultJob, payPeriod, monthRange} from './domain.js';
+import {emptyState, demoState, calculateAll, defaultJob, payPeriod, monthRange, isPlannedRestDay} from './domain.js';
 import {createDataStore} from './data-store.js';
 import {periodToolbar} from './experience.js';
 
@@ -57,7 +57,7 @@ function harness() {
   const dataStore = createDataStore(storage); dataStore.load();
   const sandbox = {
     state, realState: null, demoMode: false, dataEpoch: 0, storageProblem: '', dataStore,
-    editor, modalCleanup: undefined, FormData: FormDataStub, emptyState, demoState,
+    editor, modalCleanup: undefined, FormData: FormDataStub, emptyState, demoState, isPlannedRestDay,
     escape: String, icon: () => '', toast: value => toasts.push(value), render: () => rendered++,
     uid: () => 'synthetic-entry', timer: {reconcile: entries => reconciled.push(entries)},
     calcs: [], view: 'overblik', calendarDate: '2028-03-06', periodMode: 'month', periodDate: '2028-03-06', jobFilter: '', menuOpen: true,
@@ -133,6 +133,26 @@ test('editing a historical ATL workday retains its saved normal timetable', () =
   assert.equal(entry.normalEnd, original.normalEnd);
   assert.equal(entry.normalDate, original.normalDate);
   assert.equal('overtimeBasis' in entry, false);
+});
+
+test('saving agreed normal times keeps the selected fixed-schedule basis for later calculation', () => {
+  const {context} = harness();
+  const job = context.state.jobs[0]; job.overtimeRule = 'atlFixed';
+  const fields = Object.fromEntries(Object.entries({type:'work',date:'2028-03-06',jobId:job.id,scheme:'4',start:'05:00',end:'15:00',breakMinutes:'0',overtimeBasis:'fixedSchedule',normalStart:'06:00',normalEnd:'15:15',normalDate:'2028-03-06'}).map(([key,value])=>[key,{value}]));
+  const entry = context.readEntry({fields,elements:fields,querySelectorAll:()=>[]});
+  assert.equal(entry.overtimeBasis,'fixedSchedule');
+  assert.equal(entry.normalStart,'06:00');
+  assert.equal(entry.normalEnd,'15:15');
+  assert.equal(entry.normalDate,'2028-03-06');
+});
+
+test('saving work on a calendar rest day infers rest-day overtime with an unchecked form control', () => {
+  const {context} = harness();
+  const job = context.state.jobs[0];
+  context.state.plans=[{id:'off-plan',jobId:job.id,date:'2028-03-06',kind:'off',restDay:true}];
+  const fields = Object.fromEntries(Object.entries({type:'work',date:'2028-03-06',jobId:job.id,scheme:'4',start:'06:00',end:'12:00',breakMinutes:'0'}).map(([key,value])=>[key,{value}]));
+  const entry = context.readEntry({fields,elements:fields,querySelectorAll:()=>[]});
+  assert.equal(entry.restDay,true);
 });
 
 test('a pending modal submission runs once despite a second submit event', async () => {

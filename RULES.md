@@ -20,7 +20,7 @@ Dette dokument beskriver appens produktregler. Det er en registrering af de oply
 
 På normale arbejdsdage er faktisk arbejdstid over dagsgrænsen overarbejde. Ved 3- og 4-dages akkord er alle faktiske arbejdstimer på efterfølgende arbejdsdage i samme uge overarbejde. Lørdag og søndag i 5-dagesordningen behandles som overarbejde. Fravær og planer opretter ikke i sig selv faktisk arbejdstid eller en akkordgaranti.
 
-De angivne standarder giver henholdsvis **36,99**, **37,00** og **36,60** normale timer om ugen. Appen ændrer ikke stiltiende disse tal til 37. Jobbets ordning kan vælges i appen. De præcise dagsgrænser ligger i `domain.js`; brug af andre grænser kræver en kodeændring og nye beregningstests.
+De angivne standarder giver henholdsvis **36,99**, **37,00** og **36,60** normale timer om ugen. Jobbet kan indstilles med egne dagsnormer for mandag–torsdag og fredag i 5-dagesordningen. En norm på 7,5 timer mandag–torsdag og 7 timer fredag giver 37 timer. Valget bruges også ved en enkelt arbejdsregistrering med 5-dages uge på et job, som normalt har en anden ordning. Ældre jobs uden egne dagsnormer anvender standarderne i tabellen.
 
 Ordninger og satser tilhører det valgte job. Registreringer fra forskellige jobs skal vurderes efter deres egne kontraktindstillinger. Rettelser i en registrerings dato, job, tid eller arbejdsordning kan ændre ugefordelingen og dermed andre registreringers beregnede overarbejde.
 
@@ -33,7 +33,9 @@ Ekstratid kan samlet ikke overstige vagtens faktiske tid. Hvis noget arbejde for
 ## Løn og kontraktoplysninger
 
 - Alle beløb er **estimeret brutto**, før skat, ATP og andre fradrag.
-- Begge overarbejdssatser er fulde timesatser i kroner. Ved manuel fordeling angives hele minutter på sats 2 i registreringen. Appen fordeler højst den beregnede overarbejdstid til sats 2 og bruger sats 1 til resten. Hvis en anvendt sats mangler, er lønestimatet ufuldstændigt.
+- Overarbejdssatser kan gemmes som tillæg oven i normaltimelønnen eller som fulde timesatser. Jobbets valg angiver betydningen af begge satser. Ældre jobs uden dette valg bruger fortsat fulde timesatser. Ved tillæg medregnes normaltimelønnen én gang for hver overarbejdstime. Ved manuel fordeling angives hele minutter på sats 2 i registreringen. Appen fordeler højst den beregnede overarbejdstid til sats 2 og bruger sats 1 til resten. Hvis en anvendt sats mangler, er lønestimatet ufuldstændigt.
+- Ved fast aftalt mødetid gemmes normal dato, start og slut på arbejdsregistreringen. ATL-fordelingen bruger timen før normal start og de første tre timer efter normal slut som sats 1, derefter sats 2. Jobbets eller planens normale tider foreslås ved nye registreringer. Valget efter dagsnorm er en særskilt beregning fra faktisk start og vises tydeligt i registreringen.
+- Overarbejde på en ugentlig hverdagsfridag kan bruge sats 2 fra første time eller først tre timer på sats 1 og derefter sats 2, efter jobbets valgte aftale. Uden et valgt fridagsprincip eller en manuel fordeling markeres satsfordelingen til kontrol. Søndage og helligdage bruger den højeste ATL-sats. Lokalaftalens fordeling og eventuelle regler om minimumsbetaling ved tilkald skal vurderes særskilt.
 - Nye arbejdsregistreringer kræver kun faktisk start, slut og pause. Normal arbejdstid regnes fra arbejdsdagens faktiske start, indtil den valgte ordnings dagsgrænse er opbrugt. Pauser og mellemrum mellem delte vagter tæller ikke som arbejdstid. Vagter på samme dato deler dagsgrænsen og én eventuel akkordgaranti.
 - Ved **ATL · beregning fra faktisk start** bruger de første tre overarbejdstimer sats 1, hvorefter yderligere arbejdstid bruger sats 2. Delte vagter fortsætter fordelingen fra tidligere arbejde samme dag. Søndage, helligdage og særlige tidsrum beholder appens særskilte ATL-regler. Minutter uden en sikker sats markeres til kontrol.
 - En angivet pauseplacering trækkes fra det tidsrum, pausen ligger i, og forskyder grænserne efter behov, så pausen ikke forbruger normale eller overarbejdstimer. Hvis kun pausens længde er angivet og vagten rammer flere satser, trækkes pausen fra de højeste satser først, og appen beder om kontrol.
@@ -44,6 +46,8 @@ Ekstratid kan samlet ikke overstige vagtens faktiske tid. Hvis noget arbejde for
 - Lønperioder og udbetalingsdatoer følger jobbets indstillinger. Visninger filtrerer efter den valgte dato eller periode. En beregning kan bruge andre dage i samme uge til korrekt afgørelse af ekstra arbejdsdage.
 - Et job kan gemme oplysninger om ansættelse, ferie og sygdom. Appen opfinder ikke feriesaldi, optjening, sygeløn eller overenskomstbestemte rettigheder.
 - En importeret lønprofil opdaterer de valgte kontraktfelter på et eksisterende job efter gennemgang. En eventuel note om en opgjort saldo gemmes som kontraktnote.
+- Sygdom vises med registrerede dage, planlagte timer og beregnet sygeløn for den valgte periode. En planlagt ugentlig fridag giver ingen beregnet sygeløn. Periodens sygdom på en lønseddel gemmes særskilt fra registreringerne. En årssaldo overføres ikke til en enkelt lønperiode.
+- Lønudbetalinger gemmes med job, optjeningsperiode, løndag, ferieberettiget løn og faktisk nettoudbetaling. Beløb kopieres fra lønsedlen med de opgjorte øre. I lønperiodevisningen matches optjeningsperiodens datoer. I månedsvisningen vises udbetalinger med løndag i måneden. Nettobeløbet og opsparingsudbetalinger kan ikke beregnes ud fra arbejdstid alene. Importerede udbetalinger gennemgås før gemning, og dubletter samt konflikter kontrolleres.
 
 ## Fravær, planer og rettelser
 
@@ -51,6 +55,8 @@ Sygdom, anden fraværsdag, fridag, ferie og feriefridag registreres særskilt. D
 
 Arbejdsplaner er forventninger. De tæller først som faktisk arbejde, når en arbejdsregistrering er oprettet. Lønningsdage i kalenderen er baseret på de gemte jobindstillinger og er vejledende.
 
-En arbejdsplan kan angive **Ugentlig fridag**, også som gentagelse på udvalgte ugedage. Planen opretter ingen arbejdstimer. Ved registrering af faktisk arbejde på en ugentlig fridag foreslås hviledagsmarkeringen: alle faktiske arbejdstimer efter pause er overarbejde, uden akkordgaranti, og dagen bruger ikke en af akkordordningens normale arbejdsdage. Markeringen kan gennemgås i registreringen.
+En arbejdsplan kan angive **Ugentlig fridag**, også som gentagelse på udvalgte ugedage. Kalenderen har et hurtigt valg for en enkelt fridag i en 3- eller 4-dages uge. Fridagsplanen indgår direkte i beregningen af faktisk arbejde på dagen. Alle faktiske arbejdstimer efter pause er overarbejde, og dagen bruger ingen akkordgaranti eller normal arbejdsdag. En tidligere gemt fridagsregistrering kan erstattes med arbejde via et udtrykkeligt valg i formularen.
+
+En tur kan gemmes i Ruteplan sammen med arbejdsregistreringen. Ruten indeholder navn, ugedag, ugevalg, vogn, affaldstyper og tømninger. Arbejdsregistrering og rute valideres og gemmes samlet. En rute med samme navn, ugedag og ugevalg skal redigeres i Ruteplan.
 
 Registreringer kan redigeres og slettes. Overblik, kalender og arbejdsliste bruger samme lokale datasæt og genberegnes efter rettelser. Eksporter en JSON-sikkerhedskopi inden større ændringer. Der findes ingen serverhistorik eller automatisk gendannelse fra skyen.

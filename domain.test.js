@@ -307,8 +307,9 @@ test('normal job defaults do not modify historical manual registrations and supp
   assert.equal(sunday.overtimeAllocationMode, 'automatic');
   const legacySunday = work('2026-11-22', {scheme: '5', start: '06:00', end: '07:00'});
   const [legacySundayRow] = calculateAll({...state, entries: [legacySunday]});
-  assert.equal(legacySundayRow.overtimeTier1Hours, 1);
-  assert.equal(legacySundayRow.overtimeTier2Hours, 0);
+  assert.equal(legacySundayRow.overtimeTier1Hours, 0);
+  assert.equal(legacySundayRow.overtimeTier2Hours, 1);
+  assert.equal(legacySundayRow.overtimeAllocationMode, 'automatic');
   for (const patch of [{normalStart: '25:00'}, {normalEnd: ''}, {overtimeRule: 'other'}, {pensionBase: 'other'}]) {
     assert.equal(validateState({...state, jobs: [{...state.jobs[0], ...patch}]}).ok, false);
   }

@@ -79,17 +79,36 @@ export function payPeriod(job, date = todayISO()) {
   return {start, end, payday, label: new Intl.DateTimeFormat('da-DK', {month: 'long', year: 'numeric', timeZone: 'UTC'}).format(new Date(stamp(date)))};
 }
 
+export function isPlannedRestDay(state, jobId, date) {
+  if (!validDate(date)) return false;
+  const weekday = new Date(stamp(date)).getUTCDay() || 7;
+  return (state.plans || []).some(plan => plan.jobId === jobId && plan.kind === 'off' && plan.restDay === true
+    && (plan.date ? plan.date === date : date >= plan.from && date <= plan.to && plan.weekdays?.includes(weekday)));
+}
+
+function isRestDay(entry, state) {
+  const job = state.jobs.find(item => item.id === entry.jobId);
+  return entry.restDay === true || isPlannedRestDay(state, entry.jobId, workDate(entry, job));
+}
+
+export function overtimeRates(job) {
+  const type = job?.overtimeRateType || 'total';
+  const hourly = Number(job?.hourlyRate) || 0;
+  const first = Number(job?.overtimeRate) || 0, second = Number(job?.overtimeRate2) || 0;
+  return {type, tier1: first + (type === 'supplement' ? hourly : 0), tier2: second + (type === 'supplement' ? hourly : 0)};
+}
+
 function shiftMinutes(entry) {
   const start = timeValue(entry.start), end = timeValue(entry.end);
   if (start === null || end === null || start === end) return 0;
   const pause = numeric(entry.breakMinutes) ? entry.breakMinutes : 0;
   return Math.max(0, (end < start ? end + 1440 : end) - start - pause);
 }
-function dailyNorm(scheme, date) {
+export function dailyNorm(scheme, date, job = {}) {
   if (scheme === '3') return 12.33;
   if (scheme === '4') return 9.25;
   const day = new Date(stamp(date)).getUTCDay();
-  return day === 0 || day === 6 ? 0 : day === 5 ? 7 : 7.4;
+  return day === 0 || day === 6 ? 0 : day === 5 ? (job.fridayHours ?? 7) : (job.weekdayHours ?? 7.4);
 }
 
 const MINUTES_PER_DAY = 1440;
@@ -220,13 +239,13 @@ export function calculateAll(state) {
   for (const group of orderedDays) {
     const first = group.entries[0], job = jobs.get(first.jobId), scheme = first.scheme || job.scheme;
     const atl = job.overtimeRule === 'atlFixed';
-    const holiday = atl && isSundayOrHoliday(group.date) && group.entries.some(usesAtlSchedule);
-    const restDay = first.restDay === true || holiday;
+    const holiday = atl && isSundayOrHoliday(group.date);
+    const restDay = group.entries.some(entry => isRestDay(entry, state)) || holiday;
     const weekKey = `${first.jobId}/${weekStart(group.date)}`;
     const dayIndex = restDay ? null : (weekDays.get(weekKey) || 0) + 1;
     // Rest days and ATL holidays do not consume one of the normal accord days.
     if (!restDay) weekDays.set(weekKey, dayIndex);
-    const norm = restDay ? 0 : dailyNorm(scheme, group.date);
+    const norm = restDay ? 0 : dailyNorm(scheme, group.date, job);
     const extraDay = restDay || (scheme === '3' ? dayIndex > 3 : scheme === '4' ? dayIndex > 4 : norm === 0);
     const guaranteed = (scheme === '3' || scheme === '4') && !extraDay;
     // Extra tasks are part of the shift; only explicitly paid overtime is reclassified.
@@ -239,31 +258,35 @@ export function calculateAll(state) {
       const entry = group.entries[index], actual = shiftMinutes(entry);
       const explicitOT = (entry.extras || []).reduce((sum, extra) => sum + (extra.paidOvertime && numeric(extra.minutes) ? extra.minutes : 0), 0);
       const actualStart = usesActualStart(entry);
-      const hasSchedule = actualStart || hasNormalHours(entry);
+      const hasSchedule = actualStart || hasNormalHours(entry) || (atl && extraDay && !holiday && job.restDayOvertimeRule === 'first3');
       const override = own(entry, 'overtimeTier2Minutes');
-      const legacy = atl && !usesAtlSchedule(entry);
-      const bounds = actualStart && actual > 0 ? actualStartBounds(entry, first, baseCapacity, overtimeUsed) : null;
-      const timed = atl && !legacy && actual > 0 ? atlTimeBuckets(entry, group.date, hasSchedule, bounds) : null;
+      const legacy = atl && !usesAtlSchedule(entry) && !(extraDay && ['first3', 'tier2'].includes(job.restDayOvertimeRule));
+      const restRule = job.restDayOvertimeRule || 'review';
+      const restAllocation = atl && extraDay && !holiday;
+      const bounds = (actualStart || restAllocation && restRule === 'first3') && actual > 0 ? actualStartBounds(entry, first, baseCapacity, overtimeUsed) : null;
+      const timed = atl && (!legacy || holiday) && actual > 0 ? atlTimeBuckets(entry, group.date, hasSchedule, bounds) : null;
       const ordinary = Math.min(baseCapacity, Math.max(0, actual - explicitOT), timed?.buckets.regular ?? actual);
       baseCapacity = positiveRemainder(baseCapacity - ordinary);
       const guarantee = guaranteed && index === group.entries.length - 1 ? baseCapacity : 0;
       const overtime = positiveRemainder(actual - ordinary);
       overtimeUsed += overtime;
       const requestedTier2 = entry.overtimeTier2Minutes ?? 0;
-      const tier2 = Math.min(atl && !override ? (timed?.buckets.tier2 ?? 0) : requestedTier2, overtime);
+      const automaticTier2 = restAllocation && restRule === 'tier2' ? overtime : timed?.buckets.tier2 ?? 0;
+      const tier2 = Math.min(atl && !override ? automaticTier2 : requestedTier2, overtime);
       const warnings = [];
       const fullyClassified = timed && !positiveRemainder(actual - timed.buckets.tier2);
-      const knownManualQuantity = (override || legacy) && (restDay || extraDay || (legacy && !overtime));
+      const knownManualQuantity = (override || legacy || restAllocation && restRule === 'tier2') && (restDay || extraDay || (legacy && !overtime));
       if (atl && !hasSchedule && !fullyClassified && !knownManualQuantity) warnings.push('Normale start- og sluttider mangler. Overarbejdet kan kræve manuel kontrol.');
       if (timed?.pauseUncertain) warnings.push('Pausens placering er ukendt. Pausen er trukket fra de højeste satser først.');
-      if (!override && timed && positiveRemainder(overtime - timed.buckets.tier1 - timed.buckets.tier2)) {
+      if (!override && restAllocation && restRule === 'review') warnings.push('Alle timer er overarbejde på fridagen. Vælg satsfordelingen på jobbet, eller angiv minutter på sats 2 efter jeres aftale.');
+      if (!override && timed && !(restAllocation && restRule === 'tier2') && positiveRemainder(overtime - timed.buckets.tier1 - timed.buckets.tier2)) {
         warnings.push('Satsen for en del af overarbejdet skal bekræftes. Disse minutter er beregnet på sats 1.');
       }
       allocation.set(entry.id, {
         actualHours: actual / 60, baseHours: (ordinary + guarantee) / 60, overtimeHours: overtime / 60,
         overtimeTier1Hours: (overtime - tier2) / 60, overtimeTier2Hours: tier2 / 60,
         overtimeTier2Clamped: override && positiveRemainder(requestedTier2 - tier2) > 0,
-        overtimeAllocationMode: warnings.length ? 'needsReview' : atl && !legacy && !override ? 'automatic' : 'manual',
+        overtimeAllocationMode: warnings.length ? 'needsReview' : atl && (!legacy || holiday) && !override ? 'automatic' : 'manual',
         overtimeWarnings: warnings, guaranteeHours: guarantee / 60, dayIndex, nominalHours: norm, extraDay
       });
     }
@@ -274,13 +297,25 @@ export function calculateAll(state) {
     let calculated = allocation.get(entry.id) || {
       actualHours: 0, baseHours: 0, overtimeHours: 0, overtimeTier1Hours: 0, overtimeTier2Hours: 0,
       overtimeTier2Clamped: false, overtimeAllocationMode: 'manual', overtimeWarnings: [],
-      guaranteeHours: 0, dayIndex: null, nominalHours: dailyNorm(scheme, entry.date), extraDay: false
+      guaranteeHours: 0, dayIndex: null, nominalHours: dailyNorm(scheme, entry.date, job), extraDay: false
     };
-    if (entry.type === 'sick') calculated = {...calculated, baseHours: calculated.nominalHours * (Number(job?.sickPayPercent) || 0) / 100};
+    if (entry.type === 'sick') {
+      const nominalHours = isRestDay(entry, state) ? 0 : calculated.nominalHours;
+      calculated = {...calculated, nominalHours, baseHours: nominalHours * (Number(job?.sickPayPercent) || 0) / 100};
+    }
+    const rates = overtimeRates(job);
+    if (rates.type === 'total' && [calculated.overtimeTier1Hours && rates.tier1, calculated.overtimeTier2Hours && rates.tier2].some(rate => rate > 0 && rate < job.hourlyRate)) {
+      calculated = {...calculated, overtimeAllocationMode: 'needsReview', overtimeWarnings: [...calculated.overtimeWarnings, 'En fuld overarbejdssats er lavere end normaltimelønnen. Er beløbene tillæg, skal jobbet bruge tillæg oven i timeløn.']};
+    }
     const basePay = round(calculated.baseHours * (Number(job?.hourlyRate) || 0));
-    const overtimeTier1Pay = round(calculated.overtimeTier1Hours * (Number(job?.overtimeRate) || 0));
-    const overtimeTier2Pay = round(calculated.overtimeTier2Hours * (Number(job?.overtimeRate2) || 0));
+    const overtimeTier1Pay = round(calculated.overtimeTier1Hours * rates.tier1);
+    const overtimeTier2Pay = round(calculated.overtimeTier2Hours * rates.tier2);
     const overtimePay = round(overtimeTier1Pay + overtimeTier2Pay);
+    const overtimeTier1BasePay = round(calculated.overtimeTier1Hours * (Number(job?.hourlyRate) || 0));
+    const overtimeTier2BasePay = round(calculated.overtimeTier2Hours * (Number(job?.hourlyRate) || 0));
+    const overtimeBasePay = round(overtimeTier1BasePay + overtimeTier2BasePay);
+    const overtimeTier1SupplementPay = round(overtimeTier1Pay - overtimeTier1BasePay);
+    const overtimeTier2SupplementPay = round(overtimeTier2Pay - overtimeTier2BasePay);
     const grossPay = round(basePay + overtimePay);
     const choice = round(grossPay * (Number(job?.choicePercent) || 0) / 100);
     const holidayAccrual = round(grossPay * (Number(job?.holidayPercent) || 0) / 100);
@@ -293,7 +328,11 @@ export function calculateAll(state) {
     // for calculations. Vacation and free holiday consume days but assume no wage.
     return {
       entry, job, ...calculated, paidHours: calculated.baseHours + calculated.overtimeHours,
-      basePay, overtimePay, overtimeTier1Pay, overtimeTier2Pay, grossPay, choice, holidayAccrual, pensionBaseAmount,
+      basePay, overtimePay, overtimeBasePay, overtimeTier1Pay, overtimeTier2Pay, overtimeTier1SupplementPay, overtimeTier2SupplementPay,
+      sickHours: entry.type === 'sick' ? calculated.nominalHours : 0,
+      sickPaidHours: entry.type === 'sick' ? calculated.baseHours : 0, sickPay: entry.type === 'sick' ? basePay : 0,
+      normalWorkHours: entry.type === 'work' ? calculated.baseHours : 0, normalWorkPay: entry.type === 'work' ? basePay : 0,
+      grossPay, choice, holidayAccrual, pensionBaseAmount,
       pensionEmployee: round(pensionBaseAmount * (Number(job?.pensionEmployee) || 0) / 100),
       pensionEmployer: round(pensionBaseAmount * (Number(job?.pensionEmployer) || 0) / 100),
       rateMissing: missingRates.length > 0, missingRates
@@ -301,7 +340,7 @@ export function calculateAll(state) {
   });
 }
 export function summarize(rows) {
-  const fields = ['actualHours', 'baseHours', 'overtimeHours', 'overtimeTier1Hours', 'overtimeTier2Hours', 'paidHours', 'basePay', 'overtimePay', 'overtimeTier1Pay', 'overtimeTier2Pay', 'grossPay', 'pensionBaseAmount', 'pensionEmployee', 'pensionEmployer', 'choice', 'holidayAccrual', 'guaranteeHours'];
+  const fields = ['actualHours', 'baseHours', 'overtimeHours', 'overtimeTier1Hours', 'overtimeTier2Hours', 'paidHours', 'basePay', 'overtimePay', 'overtimeBasePay', 'overtimeTier1Pay', 'overtimeTier2Pay', 'overtimeTier1SupplementPay', 'overtimeTier2SupplementPay', 'sickHours', 'sickPaidHours', 'sickPay', 'normalWorkHours', 'normalWorkPay', 'grossPay', 'pensionBaseAmount', 'pensionEmployee', 'pensionEmployer', 'choice', 'holidayAccrual', 'guaranteeHours'];
   const result = Object.fromEntries(fields.map(field => {
     if (field.endsWith('Hours')) return [field, round(rows.reduce((sum, row) => sum + (row[field] || 0), 0), 4)];
     // Each registration already rounds to øre. Sum those whole units exactly.
@@ -369,7 +408,8 @@ export function validateEntry(entry, state, skipConflicts = false) {
   if (!job) errors.push('Vælg et eksisterende job.');
   if (!ENTRY_TYPES.includes(entry.type)) errors.push('Vælg en gyldig registreringstype.');
   if (own(entry, 'restDay') && typeof entry.restDay !== 'boolean') errors.push('Hviledag skal være markeret som ja eller nej.');
-  if (own(entry, 'overtimeBasis') && entry.overtimeBasis !== 'actualStart') errors.push('Vælg en gyldig beregning fra arbejdsdagens start.');
+  if (own(entry, 'overtimeBasis') && !['actualStart', 'fixedSchedule'].includes(entry.overtimeBasis)) errors.push('Vælg et gyldigt grundlag for beregning af overarbejde.');
+  if (entry.type === 'work' && entry.overtimeBasis === 'fixedSchedule' && !hasNormalHours(entry)) errors.push('Fast mødetid kræver normal start og slut.');
   if (own(entry, 'overtimeTier2Minutes')) {
     const minutes = entry.overtimeTier2Minutes;
     if (!Number.isInteger(minutes) || minutes < 0 || minutes > 1439) errors.push('Overarbejde på sats 2 skal være et helt antal minutter mellem 0 og 1.439.');
@@ -413,12 +453,12 @@ export function validateEntry(entry, state, skipConflicts = false) {
       if (entry.type !== 'work' || other.type !== 'work') errors.push('Der findes allerede en registrering på denne dato for jobbet.');
       else {
         if ((other.scheme || job?.scheme) !== (entry.scheme || job?.scheme)) errors.push('Vagter på samme dato skal have samme arbejdsuge.');
-        if ((other.restDay === true) !== (entry.restDay === true)) errors.push('Vagter på samme dato skal have samme hviledagsmarkering.');
+        if (isRestDay(other, state) !== isRestDay(entry, state)) errors.push('Vagter på samme dato skal have samme hviledagsmarkering.');
       }
     }
     if (job?.overtimeRule === 'atlFixed' && entry.type === 'work' && other.type === 'work' && workDate(entry, job) === workDate(other, job)) {
       if ((other.scheme || job.scheme) !== (entry.scheme || job.scheme)) errors.push('Delte vagter med samme normale vagt skal have samme arbejdsuge.');
-      if ((other.restDay === true) !== (entry.restDay === true)) errors.push('Delte vagter med samme normale vagt skal have samme hviledagsmarkering.');
+      if (isRestDay(other, state) !== isRestDay(entry, state)) errors.push('Delte vagter med samme normale vagt skal have samme hviledagsmarkering.');
       if (hasNormalHours(entry) && hasNormalHours(other) && (entry.normalStart !== other.normalStart || entry.normalEnd !== other.normalEnd)) errors.push('Delte vagter med samme normale vagt skal have samme normale start- og sluttid.');
     }
     const currentInterval = interval(entry), otherInterval = interval(other);
@@ -429,12 +469,13 @@ export function validateEntry(entry, state, skipConflicts = false) {
 
 // Import only recognized keys and primitives. Unknown keys are rejected, including
 // prototype-like names, so backups cannot smuggle unrelated application state.
-const JOB_KEYS = ['id', 'name', 'employer', 'role', 'employment', 'startDate', 'scheme', 'hourlyRate', 'overtimeRate', 'overtimeRate2', 'overtimeRule', 'normalStart', 'normalEnd', 'periodType', 'periodAnchor', 'payday', 'paydayOffset', 'pensionEmployee', 'pensionEmployer', 'pensionBase', 'holidayPercent', 'choicePercent', 'holidayDays', 'freeHolidayDays', 'sickPayPercent', 'notes'];
+const JOB_KEYS = ['id', 'name', 'employer', 'role', 'employment', 'startDate', 'scheme', 'weekdayHours', 'fridayHours', 'hourlyRate', 'overtimeRate', 'overtimeRate2', 'overtimeRateType', 'restDayOvertimeRule', 'overtimeRule', 'normalStart', 'normalEnd', 'periodType', 'periodAnchor', 'payday', 'paydayOffset', 'pensionEmployee', 'pensionEmployer', 'pensionBase', 'holidayPercent', 'choicePercent', 'holidayDays', 'freeHolidayDays', 'sickPayPercent', 'notes'];
 const ENTRY_KEYS = ['id', 'date', 'jobId', 'type', 'scheme', 'start', 'end', 'normalDate', 'normalStart', 'normalEnd', 'breakMinutes', 'breakStart', 'vehicle', 'route', 'crew', 'driver', 'colleague', 'planId', 'timerId', 'empties', 'waste', 'extras', 'notes', 'restDay', 'photos', 'overtimeTier2Minutes', 'overtimeBasis'];
 const EXTRA_KEYS = ['id', 'kind', 'task', 'minutes', 'vehicle', 'forVehicle', 'from', 'to', 'address', 'waste', 'container', 'paidOvertime'];
 const PLAN_KEYS = ['id', 'date', 'from', 'to', 'weekdays', 'jobId', 'scheme', 'title', 'start', 'end', 'vehicle', 'route', 'notes', 'driver', 'colleague', 'crew', 'people', 'kind', 'source', 'restDay'];
 const PLAN_SOURCE_KEYS = ['type', 'fileName', 'fileHash', 'page', 'row', 'importedAt', 'week', 'year'];
 const ROUTE_TEMPLATE_KEYS = ['id', 'name', 'weekParity', 'weekday', 'vehicle', 'waste', 'empties'];
+const PAYSLIP_KEYS = ['id', 'jobId', 'periodStart', 'periodEnd', 'payday', 'grossPay', 'netPay', 'sickHours', 'sickPay', 'notes'];
 const PREFERENCE_KEYS = ['compact', 'defaultBreakMinutes', 'defaultStart', 'defaultEnd', 'defaultRouteId', 'reduceMotion', 'theme', 'navigation', 'startupView', ...PREFERENCE_VISIBILITY_KEYS];
 const TEXT_KEYS = ['id', 'name', 'employer', 'role', 'employment', 'startDate', 'scheme', 'periodType', 'periodAnchor', 'notes', 'date', 'jobId', 'type', 'start', 'end', 'vehicle', 'route', 'crew', 'driver', 'colleague', 'kind', 'task', 'forVehicle', 'from', 'to', 'address', 'container', 'title'];
 function schema(object, allowed, label, errors) {
@@ -445,7 +486,7 @@ function schema(object, allowed, label, errors) {
 }
 export function validateState(data) {
   const errors = [];
-  if (!schema(data, ['version', 'jobs', 'entries', 'plans', 'vehicles', 'routes', 'routeTemplates', 'wasteCentres', 'settings', 'directory'], 'Backup', errors)) return {ok: false, errors, state: null};
+  if (!schema(data, ['version', 'jobs', 'entries', 'plans', 'vehicles', 'routes', 'routeTemplates', 'payslips', 'wasteCentres', 'settings', 'directory'], 'Backup', errors)) return {ok: false, errors, state: null};
   if (data.version !== 1) errors.push('Backupversionen understøttes ikke.');
   for (const key of ['jobs', 'entries', 'plans', 'vehicles', 'routes']) if (!Array.isArray(data[key])) errors.push(`${key} skal være en liste.`);
   if (errors.length) return {ok: false, errors, state: null};
@@ -462,10 +503,13 @@ export function validateState(data) {
     if (typeof job.name !== 'string' || !job.name.trim()) errors.push(`${label}: mangler navn.`);
     if ((job.startDate !== '' && !validDate(job.startDate)) || (job.periodType === '14days' ? !validDate(job.periodAnchor) : job.periodAnchor !== '' && !validDate(job.periodAnchor))) errors.push(`${label}: ugyldig dato.`);
     if (!['3', '4', '5'].includes(job.scheme)) errors.push(`${label}: ugyldig arbejdsuge.`);
+    for (const key of ['weekdayHours', 'fridayHours']) if (own(job, key) && (!numeric(job[key]) || job[key] <= 0 || job[key] > 24)) errors.push(`${label}: dagsnormen skal være over 0 og højst 24 timer.`);
     if (!['month', '14days'].includes(job.periodType)) errors.push(`${label}: ugyldig lønperiode.`);
     for (const key of ['hourlyRate', 'overtimeRate', 'pensionEmployee', 'pensionEmployer', 'holidayPercent', 'choicePercent', 'holidayDays', 'freeHolidayDays', 'sickPayPercent']) if (!numeric(job[key]) || job[key] < 0 || job[key] > (key.toLowerCase().includes('rate') ? 100000 : key.endsWith('Days') ? 366 : 100)) errors.push(`${label}: ugyldig værdi for ${key}.`);
     if (own(job, 'overtimeRate2') && (!numeric(job.overtimeRate2) || job.overtimeRate2 < 0 || job.overtimeRate2 > 100000)) errors.push(`${label}: overarbejdssats 2 skal være mellem 0 og 100.000 kr. pr. time.`);
     if (own(job, 'overtimeRule') && !['manual', 'atlFixed'].includes(job.overtimeRule)) errors.push(`${label}: vælg en gyldig regel for overarbejde.`);
+    if (own(job, 'overtimeRateType') && !['total', 'supplement'].includes(job.overtimeRateType)) errors.push(`${label}: vælg tillæg eller fulde timesatser for overarbejde.`);
+    if (own(job, 'restDayOvertimeRule') && !['review', 'first3', 'tier2'].includes(job.restDayOvertimeRule)) errors.push(`${label}: vælg en gyldig satsfordeling på fridage.`);
     if (!validNormalHours(job)) errors.push(`${label}: angiv to forskellige normale start- og sluttider, eller lad begge felter være tomme.`);
     if (own(job, 'pensionBase') && !['gross', 'grossWithAccruals'].includes(job.pensionBase)) errors.push(`${label}: vælg et gyldigt pensionsgrundlag.`);
     if (!Number.isInteger(job.payday) || job.payday < 1 || job.payday > 31 || !Number.isInteger(job.paydayOffset) || job.paydayOffset < 0 || job.paydayOffset > 60) errors.push(`${label}: ugyldig lønudbetalingsdag.`);
@@ -501,14 +545,14 @@ export function validateState(data) {
   for (const group of normalGroups.values()) if (group.length > 1) {
     const job = jobsById.get(group[0].jobId);
     if (new Set(group.map(entry => entry.scheme || job.scheme)).size > 1) errors.push('Delte vagter med samme normale vagt skal have samme arbejdsuge.');
-    if (new Set(group.map(entry => entry.restDay === true)).size > 1) errors.push('Delte vagter med samme normale vagt skal have samme hviledagsmarkering.');
+    if (new Set(group.map(entry => isRestDay(entry, data))).size > 1) errors.push('Delte vagter med samme normale vagt skal have samme hviledagsmarkering.');
     if (new Set(group.filter(hasNormalHours).map(entry => `${entry.normalStart}/${entry.normalEnd}`)).size > 1) errors.push('Delte vagter med samme normale vagt skal have samme normale start- og sluttid.');
   }
   for (const group of dateGroups.values()) if (group.length > 1) {
     if (group.some(entry => entry.type !== 'work')) errors.push('Backuppen har flere registreringer på en fraværsdag for samme job.');
     const job = data.jobs.find(item => item.id === group[0].jobId);
     if (new Set(group.map(entry => entry.scheme || job?.scheme)).size > 1) errors.push('Vagter på samme dato skal have samme arbejdsuge.');
-    if (new Set(group.filter(entry => entry.type === 'work').map(entry => entry.restDay === true)).size > 1) errors.push('Vagter på samme dato skal have samme hviledagsmarkering.');
+    if (new Set(group.filter(entry => entry.type === 'work').map(entry => isRestDay(entry, data))).size > 1) errors.push('Vagter på samme dato skal have samme hviledagsmarkering.');
   }
   for (const spans of jobIntervals.values()) {
     spans.sort((a, b) => a[0] - b[0]);
@@ -540,6 +584,27 @@ export function validateState(data) {
     }
   }
   for (const key of ['vehicles', 'routes']) if (data[key].length > 1000 || data[key].some(value => typeof value !== 'string' || !value.trim() || value.length > 100) || new Set(data[key]).size !== data[key].length) errors.push(`${key} skal indeholde unikke, korte tekstværdier.`);
+  if (own(data, 'payslips')) {
+    if (!Array.isArray(data.payslips) || data.payslips.length > 5000) errors.push('Lønudbetalinger skal være en liste med højst 5.000 lønsedler.');
+    else {
+      const payslipIds = new Set(), periods = new Set();
+      for (const [index, payslip] of data.payslips.entries()) {
+        const label = `Lønudbetaling ${index + 1}`;
+        if (!schema(payslip, PAYSLIP_KEYS, label, errors)) continue;
+        if (typeof payslip.id !== 'string' || !payslip.id.trim() || payslip.id.length > 200 || payslipIds.has(payslip.id)) errors.push(`${label}: vælg et gyldigt, unikt id.`);
+        payslipIds.add(payslip.id);
+        if (!data.jobs.some(job => job.id === payslip.jobId)) errors.push(`${label}: vælg et eksisterende job.`);
+        if (!validDate(payslip.periodStart) || !validDate(payslip.periodEnd) || payslip.periodStart > payslip.periodEnd || !validDate(payslip.payday)) errors.push(`${label}: angiv gyldige datoer for perioden og udbetalingen.`);
+        const periodKey = `${payslip.jobId}/${payslip.periodStart}/${payslip.periodEnd}/${payslip.payday}`;
+        if (periods.has(periodKey)) errors.push(`${label}: lønudbetalingen findes allerede for denne periode og løndato.`);
+        periods.add(periodKey);
+        for (const key of ['grossPay', 'netPay', 'sickHours', 'sickPay']) {
+          if (!['grossPay', 'netPay'].includes(key) && !own(payslip, key)) continue;
+          if (!numeric(payslip[key]) || payslip[key] < 0 || payslip[key] > (key === 'sickHours' ? 744 : 100000000)) errors.push(`${label}: ${key === 'sickHours' ? 'sygetimer' : 'beløb'} skal være et gyldigt, positivt tal eller 0.`);
+        }
+      }
+    }
+  }
   const routeTemplateIds = new Set();
   if (own(data, 'routeTemplates')) {
     if (!Array.isArray(data.routeTemplates) || data.routeTemplates.length > 1000) errors.push('Gemte ruter skal være en liste med højst 1.000 ruter.');

@@ -1,4 +1,4 @@
-import {todayISO,uid,emptyState,demoState,defaultJob,calculateAll,summarize,validateEntry,validateState,weekStart,addDays,monthRange,payPeriod,money,hours,dateLabel} from './domain.js';
+import {todayISO,uid,emptyState,demoState,defaultJob,calculateAll,summarize,validateEntry,validateState,weekStart,addDays,monthRange,payPeriod,money,hours,dateLabel,isPlannedRestDay,dailyNorm} from './domain.js';
 import {renderCalendar,renderJobs,renderWork,renderSettings,renderCreate,renderRoutes,bindPanels} from './panels.js';
 import {brandArt,renderOverview,renderDailyWorkspace,renderWageWorkspace,renderAbsenceWorkspace,renderStatisticsWorkspace,renderExportWorkspace} from './experience.js';
 import {renderDirectory,bindDirectory} from './directory-ui.js';
@@ -9,14 +9,14 @@ import {createTimerController} from './timer-controller.js';
 import {createDataStore} from './data-store.js';
 import {createCloudAccount} from './cloud-account.js';
 import {bindEntryPhotos} from './photos.js';
-import {plansForDate,plannedRestDay,entryForPlan,renderTimerHeader,renderDaySummary,renderDailyTools} from './daily-tools.js';
+import {plansForDate,entryForPlan,renderTimerHeader,renderDaySummary,renderDailyTools} from './daily-tools.js';
 
 const KEY='arbejde.data.v1';
 const escape = value => String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const paths={grid:'M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z',clock:'M12 8v4l3 2 M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0',calendar:'M4 5h16v16H4z M4 10h16 M8 3v4 M16 3v4',work:'M3 7h18v14H3z M8 7V3h8v4 M3 12c6 4 12 4 18 0 M12 11v5',plus:'M12 5v14 M5 12h14',job:'M4 21V5h10v16 M14 10h6v11 M2 21h20 M8 8h2 M8 12h2 M8 16h2 M17 14h1 M17 18h1',settings:'M12 8a4 4 0 1 1 0 8 4 4 0 0 1 0-8 M9 3h6l1 3 3 1 2 5-2 5-3 1-1 3H9l-1-3-3-1-2-5 2-5 3-1z',arrow:'M5 12h14 M14 7l5 5-5 5',check:'M5 12l4 4L19 6',chevron:'M9 5l7 7-7 7',truck:'M2 5h12v12H2z M14 9h4l4 4v4h-8 M8 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0 M20 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0',wallet:'M3 6h17v15H3z M3 6l13-3v3 M15 11h6v5h-6z',download:'M12 3v12 M7 10l5 5 5-5 M4 17v4h16v-4',leaf:'M20 3C7 1 1 10 6 17c6 5 14-1 14-14z M4 21L15 9',edit:'M4 16L16 4l4 4L8 20H4z M13 7l4 4',close:'M6 6l12 12 M18 6L6 18',sun:'M12 8a4 4 0 1 1 0 8 4 4 0 0 1 0-8 M12 2v2 M12 20v2 M2 12h2 M20 12h2 M5 5l2 2 M17 17l2 2 M5 19l2-2 M17 7l2-2'};
 const icon=(name,size=20)=>`<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${paths[name]||paths.clock}"/></svg>`;
 const types={work:'Arbejdsdag',sick:'Sygdom',off:'Fridag',holiday:'Ferie',freeHoliday:'Feriefridag',absence:'Fraværsdag'};
-const schemes={'3':'3 dage · 12,33 t.','4':'4 dage · 9,25 t.','5':'5 dage · 7,4 / 7,0 t.'};
+const schemes={'3':'3 dage · 12,33 t.','4':'4 dage · 9,25 t.','5':'5 dage · timeløn'};
 const wastes=['Mad','Rest','Pap/Papir','Plast','Glas','Metal','Haveaffald','Storskrald'];
 const nav=[['overblik','overview','Overblik'],['daglig','time','Arbejdstid'],['loen','pay','Løn'],['kalender','calendar','Kalender'],['arbejde','overview','Registreringer'],['opret','job','Opret'],['job','job','Job & kontrakt'],['fravaer','absence','Fravær'],['vogntur','vehicle','Vogn & kollegaer'],['ture','vehicle','Ture'],['affaldscentre','vehicle','Affaldscentre'],['statistik','statistics','Statistik'],['planimport','calendar','Importér vagtplan'],['eksport','export','Eksport'],['indstillinger','settings','Indstillinger']];
 let menuOpen=false,dataEpoch=0;
@@ -94,13 +94,13 @@ function openPlannedEntry(plan,date){
   const existing=entryForPlan(state,plan,date);if(existing){openEntry(existing.id);return;}
   const kind=plan.kind||'work';
   if(!types[kind]){modal('Oplysning fra vagtplan',`<p>${escape(plan.title||'Bemanding ikke afklaret')}</p><p class="muted">Denne plan kan ses i kalenderen. Afklar bemandingen, før du registrerer en arbejdsdag.</p>`,()=>true);return;}
-  openEntry(null,{date,jobId:plan.jobId,scheme:plan.scheme,type:kind,restDay:plan.restDay===true||plannedRestDay(state,plan.jobId,date),start:plan.start||'',end:plan.end||'',vehicle:plan.vehicle||'',route:plan.route||'',driver:plan.driver||state.settings.defaultDriver||'',colleague:plan.colleague||'',crew:plan.crew||'Alene',planId:plan.id,notes:plan.title||''});
+  openEntry(null,{date,jobId:plan.jobId,scheme:plan.scheme,type:kind,restDay:plan.restDay===true||isPlannedRestDay(state,plan.jobId,date),start:plan.start||'',end:plan.end||'',...(plan.start&&plan.end?{normalStart:plan.start,normalEnd:plan.end}:{}),vehicle:plan.vehicle||'',route:plan.route||'',driver:plan.driver||state.settings.defaultDriver||'',colleague:plan.colleague||'',crew:plan.crew||'Alene',planId:plan.id,notes:plan.title||''});
 }
 function finishTimer(){
   const current=timer.snapshot();if(!current)return;
   const existing=state.entries.find(e=>e.timerId===current.id);if(existing){openEntry(existing.id);return;}
   const plan=state.plans.find(p=>p.id===current.planId);
-  try{openEntry(null,{...timer.preset(),crew:plan?.crew||'Alene',colleague:plan?.colleague||'',notes:plan?.title||''});}catch(error){toast(error.message);}
+  try{openEntry(null,{...timer.preset(),...(plan?.start&&plan.end?{normalStart:plan.start,normalEnd:plan.end}:{}),crew:plan?.crew||'Alene',colleague:plan?.colleague||'',notes:plan?.title||''});}catch(error){toast(error.message);}
 }
 function timerAction(action){
   if(demoMode){toast('Skift til dine egne data for at starte en arbejdsdag.');return;}
@@ -130,7 +130,9 @@ function readEntry(form,id){
   const jobId=data.get('jobId');
   const atl=work&&state.jobs.find(job=>job.id===jobId)?.overtimeRule==='atlFixed';
   const existing=id?state.entries.find(entry=>entry.id===id):null;
-  const actualStart=work&&(!existing||existing.type!=='work'||existing.overtimeBasis==='actualStart');
+  const selectedBasis=data.get('overtimeBasis');
+  const actualStart=work&&(selectedBasis?selectedBasis==='actualStart':!existing||existing.type!=='work'||existing.overtimeBasis==='actualStart');
+  const fixedSchedule=atl&&selectedBasis==='fixedSchedule';
   const legacyNormal=atl&&!actualStart&&existing&&('normalStart'in existing||'normalEnd'in existing);
   const tier2=data.get('overtimeTier2Minutes');
   const extras=work?[...form.querySelectorAll('[data-extra]')].map(node=>{
@@ -143,15 +145,16 @@ function readEntry(form,id){
     };
   }):[];
   return {
-    id:id||uid(),date:data.get('date'),jobId,type,restDay:work&&data.get('restDay')==='on',
+    id:id||uid(),date:data.get('date'),jobId,type,restDay:(work||type==='off')&&(data.get('restDay')==='on'||isPlannedRestDay(state,jobId,data.get('date'))||(type==='off'&&existing?.restDay===true)),
     scheme:form.elements.scheme?.value||data.get('scheme')||state.jobs.find(job=>job.id===jobId)?.scheme||'4',
     start:work?data.get('start'):'',end:work?data.get('end'):'',breakMinutes:work?Number(data.get('breakMinutes')||0):0,
     ...(work&&tier2!==null&&tier2!==''?{overtimeTier2Minutes:Number(tier2)}:{}),
     ...(actualStart?{overtimeBasis:'actualStart'}:{}),
+    ...(fixedSchedule?{overtimeBasis:'fixedSchedule'}:{}),
     ...(atl?{breakStart:String(data.get('breakStart')||'')}:{}),
-    ...(legacyNormal?{
-      normalStart:String(data.get('normalStart')??existing.normalStart??''),normalEnd:String(data.get('normalEnd')??existing.normalEnd??''),
-      normalDate:String(data.get('normalDate')??existing.normalDate??'')
+    ...(fixedSchedule||legacyNormal?{
+      normalStart:String(data.get('normalStart')??existing?.normalStart??''),normalEnd:String(data.get('normalEnd')??existing?.normalEnd??''),
+      normalDate:String(data.get('normalDate')??existing?.normalDate??'')
     }:{}),
     vehicle:data.get('vehicle')||'',route:data.get('route')||'',crew:data.get('crew')||'Alene',
     planId:String(data.get('planId')||''),timerId:String(data.get('timerId')||''),
@@ -183,8 +186,9 @@ function openEntry(id = null, preset = {}) {
   const date = existing?.date || preset.date || todayISO();
   const defaultRoute = !existing && !preset.route && matchingRoutes(date).find(route => route.id === preferences?.defaultRouteId);
   const entry = {
-    date, jobId: job.id, type: 'work', scheme: job.scheme, restDay: plannedRestDay(state,job.id,date),
+    date, jobId: job.id, type: 'work', scheme: job.scheme, restDay: isPlannedRestDay(state,job.id,date),
     start: preferences?.defaultStart ?? '06:00', end: preferences?.defaultEnd ?? '14:00',
+    normalStart: job.normalStart || '', normalEnd: job.normalEnd || '', normalDate: date,
     breakMinutes: preferences?.defaultBreakMinutes ?? 0,
     vehicle: defaultRoute?.vehicle || state.settings.defaultVehicle || state.vehicles[0] || '',
     route: defaultRoute?.name || state.routes[0] || '',
@@ -192,7 +196,10 @@ function openEntry(id = null, preset = {}) {
     planId: '', timerId: '', empties: defaultRoute?.empties ?? 0,
     waste: defaultRoute?.waste || [], extras: [], notes: '', photos: [], ...preset, ...existing
   };
-  const legacyNormal=existing&&existing.overtimeBasis!=='actualStart'&&('normalStart'in existing||'normalEnd'in existing);
+  const manualRestDay = existing?.restDay === true || (preset.restDay === true && !isPlannedRestDay(state,entry.jobId,entry.date));
+  entry.overtimeBasis ||= existing?.type==='work'
+    ? (existing.normalStart&&existing.normalEnd&&existing.normalStart!==existing.normalEnd?'fixedSchedule':'actualStart')
+    : (entry.normalStart&&entry.normalEnd&&entry.normalStart!==entry.normalEnd?'fixedSchedule':'actualStart');
   entry.crew = ({alone:'Alene', colleague:'Med kollega', substitute:'Afløser', temp:'Vikar'})[entry.crew] || entry.crew;
   const routeOptions = day => [['', 'Vælg en tur for datoen'], ...matchingRoutes(day).map(route => [route.id, route.name])];
   const wasteFields = wastes.map(waste => `<label><input type="checkbox" name="waste" value="${escape(waste)}" ${entry.waste.includes(waste) ? 'checked' : ''}><span>${escape(waste)}</span></label>`).join('');
@@ -203,22 +210,31 @@ function openEntry(id = null, preset = {}) {
       ${select('jobId', 'Job', state.jobs.map(item => [item.id, item.name]), entry.jobId, 'required')}
       ${field('date', 'Dato', entry.date, 'date', 'required')}
       ${!existing && !entry.timerId ? field('until', 'Til og med (valgfrit)', '', 'date') : ''}
+      <div class="full" data-replace-off hidden>
+        <label class="check-field"><input name="replaceOff" type="checkbox" disabled><span>Erstat den registrerede fridag med arbejdsdagen</span></label>
+        <p class="muted field-hint" data-replace-off-hint></p>
+      </div>
       <div class="work-fields full"><div class="form-grid">
         ${select('scheme', 'Arbejdsuge', Object.entries(schemes), entry.scheme)}
         <div class="field field-hint">Dagens norm<p id="norm-hint" class="muted"></p></div>
-        <label class="check-field full"><input name="restDay" type="checkbox" ${entry.restDay ? 'checked' : ''}><span>Jeg arbejder på min ugentlige fridag · fuldt overarbejde</span></label>
+        <label class="check-field full"><input name="restDay" type="checkbox" ${manualRestDay ? 'checked' : ''}><span>Markér selv som arbejde på ugentlig fridag</span></label>
+        <p class="muted field-hint full">Ved flere datoer gælder din manuelle markering alle dage. Kalenderens fridage tilføjes automatisk på de relevante datoer.</p>
+        <p class="muted field-hint full" id="calendar-rest-day-hint"></p>
         ${field('start', 'Starttid', entry.start, 'time', 'required')}
         ${field('end', 'Sluttid', entry.end, 'time', 'required')}
         ${field('breakMinutes', 'Ubetalt pause (min.)', entry.breakMinutes, 'number', 'min="0" max="1440" step="1" required')}
         ${field('empties', 'Antal tømninger', entry.empties, 'number', 'min="0" max="100000" step="1" required')}
-        ${!legacyNormal?'<p class="muted small full">Overarbejde beregnes fra din faktiske starttid og arbejdsugens dagsnorm. Arbejde på den ugentlige fridag er fuldt overarbejde.</p>':''}
         <fieldset class="full entry-waste-group" data-atl-times><legend>Pause og beregningsgrundlag</legend>
-          ${legacyNormal?`<details><summary>Tidligere gemt normaltid</summary><div class="form-grid">
+          ${select('overtimeBasis', 'Beregn overarbejde ud fra', [['fixedSchedule','Aftalt mødetid og sluttid'],['actualStart','Faktisk start og dagsnorm']], entry.overtimeBasis)}
+          <div data-fixed-schedule>
+            <div class="form-grid">
             ${field('normalStart', 'Normal mødetid', entry.normalStart, 'time')}
             ${field('normalEnd', 'Normal sluttid', entry.normalEnd, 'time')}
+            ${field('normalDate', 'Dato for normal mødetid', entry.normalDate, 'date')}
+            </div>
+            <p class="muted small">Aftalte tider bruges til tillæg før mødetid og efter normal sluttid.</p>
           </div>
-          <p class="muted small">Denne tidligere registrering bruger de gemte aftalte tider.</p>
-          ${field('normalDate', 'Dato for normal mødetid', entry.normalDate, 'date')}</details>`:''}
+          <p class="muted small" data-actual-start-hint>Faktisk start og dagsnorm giver et overslag. Indtast aftalte tider for at kontrollere tillæg ved tidligt fremmøde.</p>
           ${field('breakStart', 'Start på ubetalt pause (valgfrit)', entry.breakStart, 'time')}
           <p class="muted small">Udfyld tidspunktet ved én sammenhængende pause. Ved flere pauser kan du gennemgå satsfordelingen i beregningen.</p>
         </fieldset>
@@ -234,6 +250,12 @@ function openEntry(id = null, preset = {}) {
         ${field('colleague', 'Kollega / medhjælper', entry.colleague, 'text', 'list="driver-options" maxlength="200"')}
         <p class="field-hint full" id="vehicle-context"></p>
         <fieldset class="full entry-waste-group"><legend>Affaldstyper</legend><div class="waste-choices entry-waste">${wasteFields}</div></fieldset>
+        <label class="check-field full"><input name="saveRouteTemplate" type="checkbox"><span>Gem turen i Ruteplan</span></label>
+        <div class="form-grid full" data-save-route-settings hidden>
+          ${select('routeWeekday', 'Ruten køres på', [1,2,3,4,5,6,7].map((day,index)=>[day,['Mandag','Tirsdag','Onsdag','Torsdag','Fredag','Lørdag','Søndag'][index]]), new Date(`${date}T12:00:00Z`).getUTCDay() || 7, 'disabled')}
+          ${select('routeWeekParity', 'Uger', [['all','Hver uge'],['odd','Ulige uger'],['even','Lige uger']], 'all', 'disabled')}
+          <p class="muted field-hint full">Turens navn, vogn, affaldstyper og antal tømninger gemmes sammen med arbejdsdagen. Ruten kan derefter vælges igen og redigeres i Ruteplan.</p>
+        </div>
       </div><div class="extra-section">
         <div class="panel-head"><div><h3>Dagens ekstraarbejde</h3><p>Tiden indgår i start/slut. Den lægges ikke til igen.</p></div></div>
         <div id="extras">${entry.extras.map(extraHtml).join('')}</div>
@@ -248,6 +270,14 @@ function openEntry(id = null, preset = {}) {
     <datalist id="route-options">${options([...new Set([...state.routes, ...(state.routeTemplates || []).map(route => route.name)])].map(value => [value, value]), '')}</datalist>
     <datalist id="driver-options">${options((state.directory?.people || []).map(person => [person.name, person.name]), '')}</datalist>`;
 
+  function offEntriesForWork(candidate, until = candidate.date) {
+    if (candidate.type !== 'work') return [];
+    return state.entries.filter(item => {
+      if (item.id === existing?.id || item.type !== 'off' || item.jobId !== candidate.jobId || item.date < candidate.date || item.date > until) return false;
+      const weekday = new Date(`${item.date}T12:00:00Z`).getUTCDay();
+      return until === candidate.date || (weekday !== 0 && weekday !== 6);
+    });
+  }
   let photos;
   modal(existing ? 'Rediger registrering' : 'Ny registrering', html, async fields => {
     const form = editor.querySelector('form');
@@ -255,13 +285,18 @@ function openEntry(id = null, preset = {}) {
     const until = fields.get('until') || candidate.date;
     if (until < candidate.date) return formError('Slutdato skal være på eller efter startdato.');
     if ((new Date(until) - new Date(candidate.date)) / 86400000 > 366) return formError('Vælg højst ét år ad gangen.');
+    const offEntries = offEntriesForWork(candidate, until);
+    if (offEntries.length && !fields.has('replaceOff')) return formError('Der er allerede registreret en fridag. Markér, at den skal erstattes med arbejdsdagen.');
+    const replacedIds = new Set(offEntries.map(item => item.id));
+    const explicitRestDay = candidate.type === 'work' && fields.get('restDay') === 'on';
     const additions = [];
-    const entries = state.entries.filter(item => item.id !== existing?.id);
+    const entries = state.entries.filter(item => item.id !== existing?.id && !replacedIds.has(item.id));
     const updated = {...state, entries};
     for (let day = candidate.date; day <= until; day = addDays(day, 1)) {
       const weekday = new Date(`${day}T12:00:00Z`).getUTCDay();
       if (until !== candidate.date && (weekday === 0 || weekday === 6)) continue;
-      const next = {...candidate, id: existing?.id || uid(), date: day, extras: candidate.extras.map(extra => ({...extra, id:uid()}))};
+      const restDay = (candidate.type === 'work' || candidate.type === 'off') && (explicitRestDay || isPlannedRestDay(state,candidate.jobId,day) || (candidate.type === 'work' && offEntries.some(item=>item.date===day)) || (candidate.type === 'off' && existing?.restDay === true));
+      const next = {...candidate, id: existing?.id || uid(), date: day, restDay, extras: candidate.extras.map(extra => ({...extra, id:uid()}))};
       if (candidate.normalDate && day !== candidate.date) {
         const offset = Math.round((new Date(candidate.normalDate) - new Date(candidate.date)) / 86400000);
         next.normalDate = addDays(day, offset);
@@ -272,14 +307,30 @@ function openEntry(id = null, preset = {}) {
       entries.push(next);
     }
     if (!additions.length) return formError('Datointervallet indeholder ingen hverdage.');
+    const routeTemplates = state.routeTemplates || [];
+    let savedRoute;
+    if (candidate.type === 'work' && fields.has('saveRouteTemplate')) {
+      savedRoute = {
+        id: uid(), name: candidate.route.trim(),
+        weekday: Number(fields.get('routeWeekday')), weekParity: String(fields.get('routeWeekParity') || ''),
+        vehicle: candidate.vehicle.trim(), waste: [...candidate.waste], empties: candidate.empties
+      };
+      if (!savedRoute.name) return formError('Angiv turens nummer eller navn, før du gemmer den i Ruteplan.');
+      const sameRoute = routeTemplates.find(route => route.name.toLocaleLowerCase('da-DK') === savedRoute.name.toLocaleLowerCase('da-DK') && route.weekday === savedRoute.weekday && route.weekParity === savedRoute.weekParity);
+      if (sameRoute) return formError('Denne tur findes allerede for den valgte ugedag og uge. Ret den i Ruteplan, eller vælg et andet navn. Fjern markeringen for kun at gemme arbejdsdagen.');
+      const validation = validateState({...updated, routeTemplates: [...routeTemplates, savedRoute]});
+      if (!validation.ok) return formError(validation.errors[0] || 'Kontrollér oplysningerne for ruten.');
+    }
     const epoch = dataEpoch;
     const attachments = await photos.save();
     if (editor.querySelector('form') !== form || epoch !== dataEpoch) return false;
     for (const next of additions) next.photos = attachments;
     const previous = state.entries;
+    const previousRoutes = state.routeTemplates;
     state.entries = entries;
-    if (!save()) { state.entries = previous; render(); return formError(storageProblem); }
-    toast(existing ? 'Registreringen er opdateret.' : `${additions.length === 1 ? 'Registreringen er' : additions.length + ' registreringer er'} gemt.`);
+    if (savedRoute) state.routeTemplates = [...routeTemplates, savedRoute];
+    if (!save()) { state.entries = previous; state.routeTemplates = previousRoutes; render(); return formError(storageProblem); }
+    toast(savedRoute ? 'Arbejdsdagen og turen i Ruteplan er gemt.' : existing ? 'Registreringen er opdateret.' : `${additions.length === 1 ? 'Registreringen er' : additions.length + ' registreringer er'} gemt.`);
     return true;
   });
 
@@ -299,17 +350,34 @@ function openEntry(id = null, preset = {}) {
       section.hidden = !work;
       for (const control of section.querySelectorAll('input,select,button')) control.disabled = !work;
     }
+    const routeSettings = form.querySelector('[data-save-route-settings]');
+    routeSettings.hidden = !work || !fields.saveRouteTemplate.checked;
+    for (const control of routeSettings.querySelectorAll('input,select')) control.disabled = routeSettings.hidden;
     const atl = work && state.jobs.find(job => job.id === fields.jobId.value)?.overtimeRule === 'atlFixed';
     const atlTimes = form.querySelector('[data-atl-times]');
     atlTimes.hidden = !atl;
-    for (const input of atlTimes.querySelectorAll('input')) input.disabled = !atl;
+    for (const control of atlTimes.querySelectorAll('input,select')) control.disabled = !atl;
+    const fixedSchedule = atl && fields.overtimeBasis.value === 'fixedSchedule';
+    const normalFields = form.querySelector('[data-fixed-schedule]');
+    normalFields.hidden = !fixedSchedule;
+    for (const input of normalFields.querySelectorAll('input')) { input.disabled = !fixedSchedule; input.required = fixedSchedule; }
+    form.querySelector('[data-actual-start-hint]').hidden = fixedSchedule;
     form.querySelector('#overtime-tier-hint').textContent = atl
       ? 'Lad feltet stå tomt til automatisk beregning. Indtast minutter, også 0, hvis du vil vælge sats 2 manuelt.'
       : 'Angiv minutterne på sats 2 for hver dato. Resten af overarbejdet beregnes på sats 1.';
     const scheme = fields.scheme.value;
-    form.querySelector('#norm-hint').textContent = fields.restDay.checked ? 'Ugentlig fridag · fuldt overarbejde' : {3:'12,33 t. · 3 dage pr. uge',4:'9,25 t. · 4 dage pr. uge',5:'Man–tors 7,4 t. · fredag 7,0 t.'}[scheme];
     const candidate = readEntry(form, existing?.id);
-    const others = state.entries.filter(item => item.id !== existing?.id);
+    const offEntries = offEntriesForWork(candidate, fields.until?.value || candidate.date);
+    const replaceGroup = form.querySelector('[data-replace-off]');
+    replaceGroup.hidden = !offEntries.length;
+    fields.replaceOff.disabled = !offEntries.length;
+    if (!offEntries.length) fields.replaceOff.checked = false;
+    form.querySelector('[data-replace-off-hint]').textContent = offEntries.length ? `${offEntries.length===1?'Fridagen':'Fridagene'} ${offEntries.map(item=>dateLabel(item.date)).join(', ')} erstattes med oplysningerne i formularen. Arbejdet tæller som overarbejde på en fridag.` : '';
+    const replacedIds = fields.replaceOff.checked ? new Set(offEntries.map(item=>item.id)) : new Set();
+    if (offEntries.some(item=>item.date===candidate.date) && fields.replaceOff.checked) candidate.restDay = true;
+    form.querySelector('#calendar-rest-day-hint').textContent = isPlannedRestDay(state,candidate.jobId,candidate.date) ? 'Denne dato er ugentlig fridag i kalenderen. Arbejde på datoen beregnes som fuldt overarbejde.' : '';
+    form.querySelector('#norm-hint').textContent = candidate.restDay ? 'Ugentlig fridag · fuldt overarbejde' : `${hours(dailyNorm(scheme, candidate.date, state.jobs.find(job => job.id === candidate.jobId)))} t. · ${scheme} dage pr. uge`;
+    const others = state.entries.filter(item => item.id !== existing?.id && !replacedIds.has(item.id));
     const display = form.querySelector('#entry-preview');
     const errors = validateEntry(candidate, {...state, entries: others});
     if (errors.length) { display.innerHTML = `<div class="preview-info">${escape(errors[0])}</div>`; return; }
@@ -340,11 +408,19 @@ function openEntry(id = null, preset = {}) {
   fields.jobId.addEventListener('change', () => {
     const nextJob=state.jobs.find(item=>item.id===fields.jobId.value);
     fields.scheme.value=nextJob?.scheme||'4';
-    if (!existing) fields.restDay.checked=plannedRestDay(state,fields.jobId.value,fields.date.value);
+    fields.normalStart.value=nextJob?.normalStart||'';
+    fields.normalEnd.value=nextJob?.normalEnd||'';
+    fields.normalDate.value=fields.date.value;
+    fields.overtimeBasis.value=nextJob?.normalStart&&nextJob?.normalEnd?'fixedSchedule':'actualStart';
+    fields.replaceOff.checked=false;
   });
+  let previousDate = fields.date.value;
   fields.date.addEventListener('change', () => {
-    if (!existing) fields.restDay.checked=plannedRestDay(state,fields.jobId.value,fields.date.value);
+    if (!fields.normalDate.value || fields.normalDate.value===previousDate) fields.normalDate.value=fields.date.value;
+    previousDate=fields.date.value;
+    fields.replaceOff.checked=false;
     if (fields.routeTemplate) fields.routeTemplate.innerHTML = options(routeOptions(fields.date.value), '');
+    if (!fields.saveRouteTemplate.checked) fields.routeWeekday.value = new Date(`${fields.date.value}T12:00:00Z`).getUTCDay() || 7;
   });
   fields.routeTemplate?.addEventListener('change', () => {
     const route = matchingRoutes(fields.date.value).find(item => item.id === fields.routeTemplate.value);

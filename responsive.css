@@ -1,5 +1,73 @@
 .calendar-chip-compact { display: none; }
 
+.calendar-quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+  padding: 0 24px 20px;
+}
+.calendar-quick-actions p { font-size: 12px; }
+.calendar-quick-actions .segmented { flex-wrap: wrap; }
+
+.period-summary { margin-block: 24px; }
+.period-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 24px;
+  padding: 0 24px 24px;
+}
+.period-summary-grid > * { min-inline-size: 0; }
+.period-summary-grid h3 { font-size: 16px; margin-block-end: 14px; }
+.period-summary-grid p { font-size: 12px; line-height: 1.7; margin-block: 8px; }
+.period-illness > strong, .period-payout > strong { display: block; font-size: 27px; color: var(--accent); }
+.period-illness details { margin-block-start: 14px; font-size: 12px; }
+.period-illness summary { cursor: pointer; }
+.period-illness ul, .period-payments ul { list-style: none; padding: 0; }
+.period-illness li { display: grid; gap: 5px; margin-block: 12px; }
+.period-illness .text-button { text-align: start; }
+.period-income dl > div, .period-pay-comparison dl > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px 14px;
+  padding-block: 9px;
+  border-block-end: 1px solid var(--border);
+  font-size: 12px;
+}
+.period-income dd, .period-pay-comparison dd { margin: 0; text-align: end; }
+.period-income-total { font-weight: 600; color: var(--accent); }
+.period-pay-comparison { padding: 0 24px 24px; }
+.period-pay-comparison h3 { font-size: 18px; margin-block-end: 8px; }
+.period-pay-comparison p { margin-block-start: 12px; }
+.period-payments { padding: 0 24px 24px; }
+.period-payments h3 { font-size: 18px; margin-block-end: 8px; }
+.period-payments li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding-block: 18px;
+  border-block-start: 1px solid var(--border);
+}
+.period-payments li > div:first-child { flex: 1 1 240px; min-inline-size: 0; }
+.period-payments p { font-size: 12px; line-height: 1.7; margin-block: 6px; }
+
+@media screen and (max-width: 1000px) {
+  .period-summary-grid { grid-template-columns: minmax(0, 1fr); }
+  .period-summary .panel-head { flex-wrap: wrap; }
+}
+
+@media screen and (max-width: 540px) {
+  .calendar-quick-actions { padding-inline: 16px; }
+  .calendar-quick-actions .segmented { inline-size: 100%; display: flex; }
+  .calendar-quick-actions .segmented button { flex: 1 1 110px; min-inline-size: 0; }
+  .period-summary-grid { padding-inline: 18px; gap: 24px; }
+  .period-payments { padding-inline: 18px; }
+  .period-pay-comparison { padding-inline: 18px; }
+  .period-summary .row-actions { flex-wrap: wrap; }
+}
+
 @media screen and (max-width: 1100px) {
   main, #editor {
     min-inline-size: 0;
