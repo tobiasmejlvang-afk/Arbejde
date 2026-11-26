@@ -135,6 +135,11 @@ function readEntry(form,id){
   const fixedSchedule=atl&&selectedBasis==='fixedSchedule';
   const legacyNormal=atl&&!actualStart&&existing&&('normalStart'in existing||'normalEnd'in existing);
   const tier2=data.get('overtimeTier2Minutes');
+  const sameSourceShift=work&&existing?.type==='work'&&['date','jobId','start','end'].every(key=>data.get(key)===existing[key])&&Number(data.get('breakMinutes')||0)===existing.breakMinutes;
+  const sourceTime=data.get('recordedWorkTime');
+  const recordedWorkMinutes=sameSourceShift&&existing.workTimeSource==='timemap'
+    ? sourceTime===null?existing.recordedWorkMinutes:sourceTime===''?null:/^([01]\d|2[0-3]):[0-5]\d$/.test(sourceTime)?Number(sourceTime.slice(0,2))*60+Number(sourceTime.slice(3)):NaN
+    : null;
   const extras=work?[...form.querySelectorAll('[data-extra]')].map(node=>{
     const value=name=>node.querySelector(`[name="extra-${name}"]`)?.value||'';
     return {
@@ -148,6 +153,7 @@ function readEntry(form,id){
     id:id||uid(),date:data.get('date'),jobId,type,restDay:(work||type==='off')&&(data.get('restDay')==='on'||isPlannedRestDay(state,jobId,data.get('date'))||(type==='off'&&existing?.restDay===true)),
     scheme:form.elements.scheme?.value||data.get('scheme')||state.jobs.find(job=>job.id===jobId)?.scheme||'4',
     start:work?data.get('start'):'',end:work?data.get('end'):'',breakMinutes:work?Number(data.get('breakMinutes')||0):0,
+    ...(recordedWorkMinutes!==null?{recordedWorkMinutes,workTimeSource:'timemap'}:{}),
     ...(work&&tier2!==null&&tier2!==''?{overtimeTier2Minutes:Number(tier2)}:{}),
     ...(actualStart?{overtimeBasis:'actualStart'}:{}),
     ...(fixedSchedule?{overtimeBasis:'fixedSchedule'}:{}),
@@ -222,6 +228,7 @@ function openEntry(id = null, preset = {}) {
         <p class="muted field-hint full" id="calendar-rest-day-hint"></p>
         ${field('start', 'Starttid', entry.start, 'time', 'required')}
         ${field('end', 'Sluttid', entry.end, 'time', 'required')}
+        ${entry.workTimeSource==='timemap'?`<div class="full form-grid">${field('recordedWorkTime','Arbejdstid i Timemap',`${String(Math.floor(entry.recordedWorkMinutes/60)).padStart(2,'0')}:${String(entry.recordedWorkMinutes%60).padStart(2,'0')}`,'time')}<p class="muted field-hint">Timemaps nettotid bruges i beregningen. Ryd feltet for at bruge start/slut. Ændrer du dato, start, slut eller pause, beregnes tiden igen fra dine nye oplysninger.</p></div>`:''}
         ${field('breakMinutes', 'Ubetalt pause (min.)', entry.breakMinutes, 'number', 'min="0" max="1440" step="1" required')}
         ${field('empties', 'Antal tømninger', entry.empties, 'number', 'min="0" max="100000" step="1" required')}
         <fieldset class="full entry-waste-group" data-atl-times><legend>Pause og beregningsgrundlag</legend>
@@ -344,6 +351,7 @@ function openEntry(id = null, preset = {}) {
   }
   function preview(event) {
     if (event?.target?.closest?.('[data-entry-photos]')) return;
+    if (fields.recordedWorkTime && ['date','jobId','start','end','breakMinutes','type'].includes(event?.target?.name)) fields.recordedWorkTime.value='';
     const work = fields.type.value === 'work';
     const section = form.querySelector('.work-fields');
     if (section.hidden === work) {

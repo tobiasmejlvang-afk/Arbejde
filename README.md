@@ -1,4 +1,8 @@
-# Arbejde · Tid & Løn — v3.5.1
+# Arbejde · Tid & Løn — v3.5.2
+
+Lønoverblikket fremhæver timer for normal løn, sygdom og begge overtidstillæg. Normal løn omfatter grundlønnen for overarbejde; tillægstimer tælles én gang i de betalte timer. Valgfrie lønseddeltimer kan sammenholdes med appens timer.
+
+Afstemte Timemap-registreringer kan bevare nettotiden fra kilden sammen med start/slut. Ved redigering bevares kildevarigheden for noter og vogn; ændringer af vagttider, dato eller pause beregner tiden igen. Nettotiden kan ryddes i registreringen.
 
 Personlig dansk app til arbejdstid, renovationsture, akkord, løn og fravær. Version 3 tilføjer lokal PDF-import af arbejdsplaner og en daglig timer. Det orange/grafit-design bruger de leverede logoer og 3D-ikoner samt en lokalt leveret Inter-skrifttype.
 

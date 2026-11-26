@@ -44,10 +44,32 @@
   font-size: 12px;
 }
 .period-income dd, .period-pay-comparison dd { margin: 0; text-align: end; }
+.period-income dt, .period-income dd { min-inline-size: 0; overflow-wrap: anywhere; }
+.period-income dt { align-self: center; }
+.period-income dd strong { display: block; font-size: 20px; font-weight: 650; color: var(--accent); font-variant-numeric: tabular-nums; }
+.period-income dl small { display: block; font-size: 11px; font-weight: 400; color: var(--muted); line-height: 1.6; margin-block-start: 4px; }
+.period-hours-total { margin-block-start: 8px; font-weight: 600; }
+.period-income .period-hours-total dd strong { font-size: 26px; }
 .period-income-total { font-weight: 600; color: var(--accent); }
 .period-pay-comparison { padding: 0 24px 24px; }
 .period-pay-comparison h3 { font-size: 18px; margin-block-end: 8px; }
 .period-pay-comparison p { margin-block-start: 12px; }
+.period-hours-comparison { inline-size: 100%; table-layout: fixed; border-collapse: collapse; font-size: 13px; }
+.period-hours-comparison caption { text-align: start; font-size: 12px; margin-block-end: 12px; }
+.period-hours-comparison th, .period-hours-comparison td { padding: 12px 8px; border-block-end: 1px solid var(--border); overflow-wrap: anywhere; }
+.period-hours-comparison th { text-align: start; font-weight: 500; }
+.period-hours-comparison th:first-child { inline-size: 44%; padding-inline-start: 0; }
+.period-hours-comparison td, .period-hours-comparison thead th:not(:first-child) { text-align: end; font-variant-numeric: tabular-nums; }
+.period-hours-comparison td strong { font-size: 18px; color: var(--accent); }
+.period-hours-comparison th:last-child, .period-hours-comparison td:last-child { padding-inline-end: 0; }
+.period-amount-comparison { margin-block-start: 20px; font-size: 12px; }
+.period-amount-comparison summary { cursor: pointer; }
+.gross-hour-total { font-size: clamp(32px, 5vw, 49px); line-height: 1.2; letter-spacing: -1.5px; color: var(--accent); font-weight: 650; margin-block: 21px 16px; overflow-wrap: anywhere; }
+.gross-hour-total > span { font-size: 18px; letter-spacing: 0; color: var(--muted); }
+.gross-card .gross-amount-secondary { font-size: 24px; letter-spacing: -.5px; }
+.gross-amount-secondary > span { display: block; font-size: 12px; font-weight: 400; letter-spacing: 0; color: var(--muted); margin-block-end: 5px; }
+.gross-card .gross-lines { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; }
+.gross-lines > span { min-inline-size: 0; overflow-wrap: anywhere; }
 .period-payments { padding: 0 24px 24px; }
 .period-payments h3 { font-size: 18px; margin-block-end: 8px; }
 .period-payments li {
@@ -74,6 +96,10 @@
   .period-summary-grid { padding-inline: 18px; gap: 24px; }
   .period-payments { padding-inline: 18px; }
   .period-pay-comparison { padding-inline: 18px; }
+  .period-hours-comparison { font-size: 12px; }
+  .period-hours-comparison th, .period-hours-comparison td { padding-inline: 5px; }
+  .period-hours-comparison td strong { font-size: 16px; }
+  .gross-card .gross-lines { gap: 20px 14px; }
   .period-summary .row-actions { flex-wrap: wrap; }
 }
 

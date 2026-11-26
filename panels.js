@@ -62,19 +62,20 @@ export function renderPeriodSummary(ctx, rows = ctx.rows || [], period = ctx.ran
       : slip.payday >= period?.start && slip.payday <= period?.end)).sort((a, b) => b.payday.localeCompare(a.payday));
   const paidNet = payslips.reduce((total, slip) => total + Math.round(slip.netPay * 100), 0) / 100;
   const recordedPay = payslips.reduce((total, slip) => total + Math.round(slip.grossPay * 100), 0) / 100;
-  const comparison = ctx.periodMode === 'pay' && payslips.length ? `<div class="period-pay-comparison"><h3>Sammenligning af lønperioden</h3><dl><div><dt>Appens registrerede bruttoløn</dt><dd>${money(totals.grossPay)}</dd></div><div><dt>Lønsedlernes ferieberettigede løn</dt><dd>${money(recordedPay)}</dd></div><div><dt>Forskel · app minus lønsedler</dt><dd>${money((Math.round(totals.grossPay * 100) - Math.round(recordedPay * 100)) / 100)}</dd></div></dl><p class="muted small">Afvigelsen kan skyldes manglende dage eller satsfordeling.</p></div>` : '';
   const payRows = [
-    ['Normal løn for arbejde', totals.normalWorkPay],
-    ['Sygeløn', totals.sickPay],
-    ['Overarbejde · grundløn', totals.overtimeBasePay],
-    ['Overarbejde · tillæg 1', totals.overtimeTier1SupplementPay],
-    ['Overarbejde · tillæg 2', totals.overtimeTier2SupplementPay]
+    ['Normal løn', totals.normalWorkHours + totals.overtimeHours, totals.normalWorkPay + totals.overtimeBasePay, 'baseHours'],
+    ['Sygeløn', totals.sickPaidHours, totals.sickPay, 'sickHours'],
+    ['Overtidstillæg · sats 1', totals.overtimeTier1Hours, totals.overtimeTier1SupplementPay, 'overtimeTier1Hours'],
+    ['Overtidstillæg · sats 2', totals.overtimeTier2Hours, totals.overtimeTier2SupplementPay, 'overtimeTier2Hours']
   ];
+  const slipHours = key => payslips.every(slip => typeof slip[key] === 'number' && Number.isFinite(slip[key]))
+    ? hours(payslips.reduce((total, slip) => total + slip[key], 0)) + ' t.' : 'Ikke oplyst';
+  const comparison = ctx.periodMode === 'pay' && payslips.length ? `<div class="period-pay-comparison"><h3>Sammenligning af lønperioden</h3><table class="period-hours-comparison"><caption class="muted">Timer fordelt på lønposter</caption><thead><tr><th scope="col">Lønpost</th><th scope="col">App</th><th scope="col">Lønseddel</th></tr></thead><tbody>${payRows.map(([label, quantity, , key]) => `<tr data-pay-hours="${key}"><th scope="row">${label}</th><td><strong>${hours(quantity)} t.</strong></td><td>${slipHours(key)}</td></tr>`).join('')}</tbody></table><p class="muted small">Normal løn omfatter også grundlønnen for overarbejde. Tillæggenes timer indgår allerede i normaltimerne. Lønseddeltimer vises, når de er angivet for alle periodens lønsedler.</p><details class="period-amount-comparison"><summary>Se sammenligning af beløb</summary><dl><div><dt>Appens registrerede bruttoløn</dt><dd>${money(totals.grossPay)}</dd></div><div><dt>Lønsedlernes ferieberettigede løn</dt><dd>${money(recordedPay)}</dd></div><div><dt>Forskel · app minus lønsedler</dt><dd>${money((Math.round(totals.grossPay * 100) - Math.round(recordedPay * 100)) / 100)}</dd></div></dl><p class="muted small">Afvigelsen kan skyldes manglende dage eller satsfordeling.</p></details></div>` : '';
   return `<section class="card period-summary" aria-label="Sygdom og løn i den valgte periode">
     <div class="panel-head"><div><span class="surface-label">DEN VALGTE PERIODE</span><h2>Sygdom & løn samlet</h2><p>${attr(ctx, dateText(period?.start))} – ${attr(ctx, dateText(period?.end))}</p></div><div class="row-actions">${payday ? `<span class="badge">Løndag ${attr(ctx, dateText(payday))}</span>` : ''}<button type="button" class="button secondary" data-panel-action="new-payslip">Tilføj udbetaling</button><button type="button" class="button subtle" data-panel-action="import-payslips">Importér lønudbetalinger</button></div></div>
     <div class="period-summary-grid">
+      <div class="period-income"><h3>Lønberegning · timer</h3><dl>${payRows.map(([label, quantity, amount, key]) => `<div data-pay-line="${key}"><dt>${label}${key === 'baseHours' ? '<small>Inkl. grundløn for overarbejde</small>' : ''}</dt><dd><strong>${hours(quantity)} t.</strong><small>${money(amount)}</small></dd></div>`).join('')}<div class="period-hours-total"><dt>Betalte timer i alt</dt><dd><strong>${hours(totals.paidHours)} t.</strong></dd></div><div class="period-income-total"><dt>Brutto i alt</dt><dd>${money(totals.grossPay)}</dd></div></dl><p class="muted">Overtidstillæggenes timer indgår allerede i normaltimerne.</p></div>
       <div class="period-illness"><h3>Sygdom</h3><strong>${totals.sickDays} ${totals.sickDays === 1 ? 'dag' : 'dage'}</strong><p>${hours(totals.sickHours)} planlagte timer</p><p>${money(totals.sickPay)} i beregnet sygeløn</p>${sickRows.length ? `<details><summary>Se sygedagene</summary><ul>${sickRows.map(row => `<li><button type="button" class="text-button" data-panel-action="edit-entry" data-id="${attr(ctx, row.entry.id)}">${attr(ctx, dateText(row.entry.date))}</button><span>${attr(ctx, jobName(ctx, row.entry.jobId))}</span><b>${money(row.grossPay)}</b></li>`).join('')}</ul></details>` : '<p class="muted">Ingen sygedage registreret i perioden.</p>'}</div>
-      <div class="period-income"><h3>Lønberegning</h3><dl>${payRows.map(([label, amount]) => `<div><dt>${label}</dt><dd>${money(amount)}</dd></div>`).join('')}<div class="period-income-total"><dt>Brutto i alt</dt><dd>${money(totals.grossPay)}</dd></div></dl></div>
       <div class="period-payout"><h3>${payslips.length ? 'Netto ifølge lønsedler' : 'Forventet løn'}</h3><strong>${money(payslips.length ? paidNet : totals.grossPay)}</strong><p>${payslips.length ? 'Samlet nettobeløb på de registrerede lønsedler.' : 'Estimeret løn før skat og eget pensionsbidrag.'}</p>${payday ? `<p>Forventet løndag ${attr(ctx, dateText(payday))}.</p>` : '<p class="muted">Vælg Lønperiode og et job for at se løndatoen.</p>'}${!payslips.length ? '<p class="muted">Tilføj lønsedlens nettobeløb, når lønnen er udbetalt.</p>' : ''}${totals.rateMissing ? '<p class="text-amber">Der mangler satser. Lønoverslaget er ufuldstændigt.</p>' : ''}</div>
     </div>${comparison}${payslips.length ? `<div class="period-payments"><h3>Lønudbetalinger</h3><p class="muted small">${ctx.periodMode === 'pay' ? 'Lønsedler for den viste lønperiode.' : 'Udbetalinger med løndag i den viste måned. Vælg Lønperiode for at sammenholde samme datointerval.'} Ferieberettiget løn bruges som sammenligningsgrundlag for appens løn.</p><ul>${payslips.map(slip => `<li><div><strong>${attr(ctx, dateText(slip.payday))} · ${attr(ctx, jobName(ctx, slip.jobId))}</strong><p>${attr(ctx, dateText(slip.periodStart))} – ${attr(ctx, dateText(slip.periodEnd))}</p><p>Ferieberettiget løn ${money(slip.grossPay)} · ${slip.payday > todayISO() ? 'Til udbetaling efter skat' : 'Udbetalt efter skat'} ${money(slip.netPay)}</p>${slip.sickHours !== undefined || slip.sickPay !== undefined ? `<p>Sygdom på lønsedlen${slip.sickHours !== undefined ? ` · ${hours(slip.sickHours)} timer` : ''}${slip.sickPay !== undefined ? ` · ${money(slip.sickPay)}` : ''}</p>` : ''}${slip.notes ? `<p class="muted">${attr(ctx, slip.notes)}</p>` : ''}</div><div class="row-actions"><button type="button" class="button subtle" data-panel-action="edit-payslip" data-id="${attr(ctx, slip.id)}">Ret</button><button type="button" class="button subtle danger" data-panel-action="delete-payslip" data-id="${attr(ctx, slip.id)}">Slet</button></div></li>`).join('')}</ul></div>` : ''}<input id="payslips-file" type="file" accept="application/json,.json" hidden></section>`;
 }
@@ -144,6 +145,7 @@ function calendarPlanChip(ctx, plan, date) {
 
 function calendarEntryChip(ctx, entry, calculation) {
   const work = entry.type === 'work';
+  const timemap = work && entry.workTimeSource === 'timemap' && Number.isInteger(entry.recordedWorkMinutes);
   const type = typeLabels[entry.type] || 'Registrering';
   const vehicle = String(entry.vehicle || '').trim();
   const numericVehicle = /^\d+$/.test(vehicle);
@@ -151,9 +153,9 @@ function calendarEntryChip(ctx, entry, calculation) {
   let compact = entry.type === 'freeHoliday' ? 'Fri' : type;
   if (work) compact = numericVehicle ? `V${vehicle}` : 'Vagt';
   const label = [type, dateText(entry.date), work && `${entry.start || ''}–${entry.end || ''}`,
-    work && vehicleLabel, jobName(ctx, entry.jobId)].filter(Boolean).join(' · ');
+    work && vehicleLabel, timemap && `Arbejdstid fra Timemap: ${hours(calculation?.actualHours || 0)} timer`, jobName(ctx, entry.jobId)].filter(Boolean).join(' · ');
   const detail = work
-    ? `${attr(ctx, entry.start || '')}–${attr(ctx, entry.end || '')}<small>${attr(ctx, hours(calculation?.actualHours || 0))}${number(calculation?.overtimeHours) > 0 ? ' · OT' : ''}</small>${vehicleLabel ? `<small class="calendar-entry-vehicle">${attr(ctx, vehicleLabel)}</small>` : ''}`
+    ? `${attr(ctx, entry.start || '')}–${attr(ctx, entry.end || '')}<small>${attr(ctx, hours(calculation?.actualHours || 0))} t.${timemap ? ' · Timemap' : ''}${number(calculation?.overtimeHours) > 0 ? ' · OT' : ''}</small>${vehicleLabel ? `<small class="calendar-entry-vehicle">${attr(ctx, vehicleLabel)}</small>` : ''}`
     : attr(ctx, type);
   return `<button class="calendar-chip calendar-entry${work ? '' : ' calendar-absence'}" data-panel-action="edit-entry" data-id="${attr(ctx, entry.id)}" title="${attr(ctx, label)}" aria-label="${attr(ctx, label)}"><span class="calendar-chip-compact" aria-hidden="true">${attr(ctx, compact)}</span><span class="calendar-chip-detail">${detail}</span></button>`;
 }
@@ -258,7 +260,7 @@ function workTable(ctx) {
   if (!rows.length) return `<div class="empty-state">${brandIcon('time', 'empty-art', 88)}<h3>Ingen registreringer fundet</h3><p>Prøv et andet filter, eller giv en ny arbejdsdag plads i dit overblik.</p><button class="button primary" data-panel-action="new-work">+ Registrer arbejdsdag</button></div>`;
   return `<div class="table-wrap"><table class="data-table"><thead><tr><th>Dato & job</th><th>Registrering</th><th>Vogn / tur</th><th>Arbejdet</th><th>Overarbejde</th><th>Lønoverslag</th><th><span class="sr-only">Handlinger</span></th></tr></thead><tbody>${rows.map(row => {
     const entry = row.entry;
-    return `<tr><td><strong>${dateText(entry.date)}</strong><small class="muted">${attr(ctx, jobName(ctx, entry.jobId))}</small></td><td><span class="badge${entry.type === 'work' ? '' : ' neutral'}">${typeLabels[entry.type] || 'Fravær'}</span>${entry.type === 'work' ? `<small class="muted">${attr(ctx, entry.start || '')}–${attr(ctx, entry.end || '')}</small>` : ''}</td><td>${entry.vehicle ? attr(ctx, /^\d+$/.test(String(entry.vehicle).trim()) ? `Vogn ${entry.vehicle}` : entry.vehicle) : '—'}<small class="muted">${entry.route ? `Tur ${attr(ctx, entry.route)}` : ''}</small>${entry.driver ? `<small class="muted">Chauffør: ${attr(ctx, entry.driver)}</small>` : ''}${entry.colleague ? `<small class="muted">Kollega: ${attr(ctx, entry.colleague)}</small>` : ''}</td><td>${hours(row.actualHours || 0)}</td><td>${workOvertime(ctx, row)}</td><td>${row.rateMissing ? '<span class="muted">Sats mangler</span>' : money(row.grossPay || 0)}</td><td><div class="row-actions"><button class="button subtle" data-panel-action="edit-entry" data-id="${attr(ctx, entry.id)}">Ret</button><button class="button subtle danger" data-panel-action="delete-entry" data-id="${attr(ctx, entry.id)}">Slet</button></div></td></tr>`;
+    return `<tr><td><strong>${dateText(entry.date)}</strong><small class="muted">${attr(ctx, jobName(ctx, entry.jobId))}</small></td><td><span class="badge${entry.type === 'work' ? '' : ' neutral'}">${typeLabels[entry.type] || 'Fravær'}</span>${entry.type === 'work' ? `<small class="muted">${attr(ctx, entry.start || '')}–${attr(ctx, entry.end || '')}</small>` : ''}</td><td>${entry.vehicle ? attr(ctx, /^\d+$/.test(String(entry.vehicle).trim()) ? `Vogn ${entry.vehicle}` : entry.vehicle) : '—'}<small class="muted">${entry.route ? `Tur ${attr(ctx, entry.route)}` : ''}</small>${entry.driver ? `<small class="muted">Chauffør: ${attr(ctx, entry.driver)}</small>` : ''}${entry.colleague ? `<small class="muted">Kollega: ${attr(ctx, entry.colleague)}</small>` : ''}</td><td>${hours(row.actualHours || 0)}${entry.workTimeSource === 'timemap' ? '<small class="muted">Timemap</small>' : ''}</td><td>${workOvertime(ctx, row)}</td><td>${row.rateMissing ? '<span class="muted">Sats mangler</span>' : money(row.grossPay || 0)}</td><td><div class="row-actions"><button class="button subtle" data-panel-action="edit-entry" data-id="${attr(ctx, entry.id)}">Ret</button><button class="button subtle danger" data-panel-action="delete-entry" data-id="${attr(ctx, entry.id)}">Slet</button></div></td></tr>`;
   }).join('')}</tbody><tfoot><tr><td colspan="3">${rows.length} registreringer</td><td>${hours(rows.reduce((sum, row) => sum + number(row.actualHours), 0))}</td><td>${hours(rows.reduce((sum, row) => sum + number(row.overtimeHours), 0))}</td><td>${money(rows.reduce((sum, row) => sum + number(row.grossPay), 0))}</td><td></td></tr></tfoot></table></div>`;
 }
 
@@ -403,14 +405,17 @@ function editPayslip(ctx, id) {
     ${field(ctx, 'Udbetalingsdato', 'payday', slip.payday, { type: 'date', required: true, full: true })}
     ${field(ctx, 'Ferieberettiget løn fra lønsedlen · kr.', 'grossPay', slip.grossPay, { type: 'number', required: true, min: 0, max: 100000000, step: 0.01 })}
     ${field(ctx, 'Nettoudbetaling fra lønsedlen · kr.', 'netPay', slip.netPay, { type: 'number', required: true, min: 0, max: 100000000, step: 0.01 })}
-    ${field(ctx, 'Sygdomstimer på lønsedlen · valgfrit', 'sickHours', slip.sickHours ?? '', { type: 'number', min: 0, max: 10000, step: 0.01 })}
+    ${field(ctx, 'Normallønstimer inkl. overarbejde · valgfrit', 'baseHours', slip.baseHours ?? '', { type: 'number', min: 0, max: 744, step: 0.01, hint: 'Timer på lønsedlens normale lønpost, inklusive grundløn for overarbejde.' })}
+    ${field(ctx, 'Sygdomstimer på lønsedlen · valgfrit', 'sickHours', slip.sickHours ?? '', { type: 'number', min: 0, max: 744, step: 0.01 })}
+    ${field(ctx, 'Overtidstillæg · sats 1 · timer · valgfrit', 'overtimeTier1Hours', slip.overtimeTier1Hours ?? '', { type: 'number', min: 0, max: 744, step: 0.01 })}
+    ${field(ctx, 'Overtidstillæg · sats 2 · timer · valgfrit', 'overtimeTier2Hours', slip.overtimeTier2Hours ?? '', { type: 'number', min: 0, max: 744, step: 0.01 })}
     ${field(ctx, 'Sygeløn på lønsedlen · kr. · valgfrit', 'sickPay', slip.sickPay ?? '', { type: 'number', min: 0, max: 100000000, step: 0.01 })}
     <label class="field full"><span>Note · valgfrit</span><textarea name="notes" rows="2" maxlength="5000">${attr(ctx, slip.notes)}</textarea></label>
     <p class="muted field-hint full">Brug ferieberettiget løn som sammenligningsgrundlag og nettobeløbet fra den faktiske lønseddel. Sygdom i appens registreringer vises ved siden af oplysningerne fra lønsedlen.</p></div>`, data => {
     const updated = { id: slip.id };
     for (const key of ['jobId', 'periodStart', 'periodEnd', 'payday', 'notes']) updated[key] = String(data.get(key) || '').trim();
     for (const key of ['grossPay', 'netPay']) updated[key] = Number(data.get(key));
-    for (const key of ['sickHours', 'sickPay']) if (String(data.get(key) ?? '').trim()) updated[key] = Number(data.get(key));
+    for (const key of ['baseHours', 'overtimeTier1Hours', 'overtimeTier2Hours', 'sickHours', 'sickPay']) if (String(data.get(key) ?? '').trim()) updated[key] = Number(data.get(key));
     const current = ctx.state.payslips || [];
     const duplicate = current.find(item => item.id !== updated.id && item.jobId === updated.jobId
       && item.periodStart === updated.periodStart && item.periodEnd === updated.periodEnd && item.payday === updated.payday);
@@ -442,7 +447,7 @@ async function importPayslips(ctx, file) {
       const item = { ...incomingSlip, jobId };
       const existing = merged.find(slip => slip.jobId === jobId && ((slip.periodStart === item.periodStart && slip.periodEnd === item.periodEnd && slip.payday === item.payday) || slip.id === item.id));
       if (existing) {
-        if (['periodStart', 'periodEnd', 'payday', 'grossPay', 'netPay', 'sickHours', 'sickPay'].some(key => existing[key] !== item[key])) {
+        if (['periodStart', 'periodEnd', 'payday', 'grossPay', 'netPay', 'baseHours', 'overtimeTier1Hours', 'overtimeTier2Hours', 'sickHours', 'sickPay'].some(key => existing[key] !== item[key])) {
           ctx.toast('En gemt udbetaling har andre oplysninger. Ret den eksisterende udbetaling før import.');
           return false;
         }

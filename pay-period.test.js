@@ -21,6 +21,72 @@ function restPlan(overrides = {}) {
     title: 'Ugentlig fridag', start: '', end: '', ...overrides};
 }
 
+test('Timemap net minutes govern rest-day overtime on both rate tiers', () => {
+  const state = fixture({restDayOvertimeRule: 'first3'});
+  state.entries = [work({start: '05:39', end: '11:50', restDay: true, recordedWorkMinutes: 370, workTimeSource: 'timemap'})];
+  assert.equal(validateState(state).ok, true);
+  const row = calculateAll(state)[0];
+  assert.equal(row.actualHours * 60, 370);
+  assert.equal(row.overtimeHours * 60, 370);
+  assert.equal(row.overtimeTier1Hours * 60, 180);
+  assert.equal(row.overtimeTier2Hours * 60, 190);
+  assert.equal(row.overtimeAllocationMode, 'automatic');
+});
+
+test('source net duration preserves clock labels, pauses, overnight and split-shift allocation', () => {
+  const state = fixture({restDayOvertimeRule: 'first3'});
+  state.entries = [work({id:'a', start:'06:00',end:'10:01',restDay:true,recordedWorkMinutes:240,workTimeSource:'timemap'}),
+    work({id:'b',start:'12:00',end:'14:01',restDay:true,breakMinutes:1,breakStart:'13:00',recordedWorkMinutes:119,workTimeSource:'timemap'})];
+  const total=summarize(calculateAll(state));
+  assert.equal(Math.round(total.actualHours*60),359);
+  assert.equal(total.overtimeTier1Hours,3);
+  assert.equal(Math.round(total.overtimeTier2Hours*60),179);
+  state.entries=[work({date:'2028-03-06',start:'22:00',end:'02:01',breakMinutes:30,breakStart:'23:30',restDay:true,recordedWorkMinutes:210,workTimeSource:'timemap'})];
+  const row=calculateAll(state)[0];
+  assert.equal(row.actualHours,3.5);
+  assert.equal(row.overtimeTier1Hours,3);
+  assert.equal(row.overtimeTier2Hours,.5);
+  assert.equal(state.entries[0].end,'02:01');
+  assert.equal(state.entries[0].breakMinutes,30);
+});
+
+test('Timemap source duration is explicit, validated and round-trips in backups', () => {
+  const state=fixture();
+  const original=work({recordedWorkMinutes:794,workTimeSource:'timemap'});
+  state.entries=[original];
+  const restored=validateState(JSON.parse(JSON.stringify(state)));
+  assert.equal(restored.ok,true);
+  assert.equal(restored.state.entries[0].recordedWorkMinutes,794);
+  for(const change of [{recordedWorkMinutes:-1},{recordedWorkMinutes:0},{recordedWorkMinutes:795.1},{recordedWorkMinutes:796},{recordedWorkMinutes:NaN},{workTimeSource:'other'},{workTimeSource:undefined},{type:'sick'},{breakMinutes:800}]) {
+    assert.equal(validateState({...state,entries:[{...original,...change}]}).ok,false,JSON.stringify(change));
+  }
+  const withoutSource={...original};delete withoutSource.workTimeSource;
+  assert.equal(validateState({...state,entries:[withoutSource]}).ok,false);
+  const withoutDuration={...original};delete withoutDuration.recordedWorkMinutes;
+  assert.equal(validateState({...state,entries:[withoutDuration]}).ok,false);
+  state.entries=[work()];
+  assert.equal(calculateAll(state)[0].actualHours,13.25);
+});
+
+test('fixed schedule discloses uncertain source-minute placement without changing normal timetable', () => {
+  const state=fixture();
+  state.entries=[work({start:'05:59',end:'15:15',normalStart:'06:00',normalEnd:'15:15',overtimeBasis:'fixedSchedule',recordedWorkMinutes:555,workTimeSource:'timemap'})];
+  const row=calculateAll(state)[0];
+  assert.equal(row.actualHours,9.25);
+  assert.equal(row.overtimeTier1Hours,1/60);
+  assert.match(row.overtimeWarnings.join(' '),/Timemaps nettotid/);
+  assert.equal(state.entries[0].normalStart,'06:00');
+});
+
+test('actual payslip hour quantities stay optional and are validated independently of amounts', () => {
+  const state=fixture();
+  state.payslips=[{id:'slip',jobId:'job',periodStart:'2028-03-06',periodEnd:'2028-03-19',payday:'2028-03-23',grossPay:15000,netPay:10000,baseHours:70.5,overtimeTier1Hours:2.5,overtimeTier2Hours:1.25}];
+  assert.equal(validateState(state).ok,true);
+  for(const key of ['baseHours','overtimeTier1Hours','overtimeTier2Hours']) {
+    for(const value of [-1,745,'4',null])assert.equal(validateState({...state,payslips:[{...state.payslips[0],[key]:value}]}).ok,false);
+  }
+});
+
 test('supplements add ordinary hourly pay to every overtime hour exactly once', () => {
   const state = fixture();
   state.entries = [work()];

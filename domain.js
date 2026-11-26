@@ -98,11 +98,14 @@ export function overtimeRates(job) {
   return {type, tier1: first + (type === 'supplement' ? hourly : 0), tier2: second + (type === 'supplement' ? hourly : 0)};
 }
 
-function shiftMinutes(entry) {
+function rawShiftMinutes(entry) {
   const start = timeValue(entry.start), end = timeValue(entry.end);
   if (start === null || end === null || start === end) return 0;
   const pause = numeric(entry.breakMinutes) ? entry.breakMinutes : 0;
   return Math.max(0, (end < start ? end + 1440 : end) - start - pause);
+}
+function shiftMinutes(entry) {
+  return numeric(entry.recordedWorkMinutes) ? entry.recordedWorkMinutes : rawShiftMinutes(entry);
 }
 export function dailyNorm(scheme, date, job = {}) {
   if (scheme === '3') return 12.33;
@@ -172,14 +175,18 @@ function atlTimeBuckets(entry, normalDate, hasSchedule, actualBounds = null) {
   const tier2Start = actualBounds?.tier2Start ?? (normalEnd + 180);
   const pause = pauseInterval(entry, start, end);
   const buckets = {regular: 0, tier1: 0, tier2: 0, unclassified: 0};
+  const segments = [];
+  const add = (key, minutes) => { buckets[key] += minutes; segments.push({key, minutes}); };
   const specialEves = ['12-24', '12-31'];
+  let calendarRateBoundary = false;
 
   for (let day = firstDay; day < end; day += MINUTES_PER_DAY) {
     const date = iso(day * 60000);
     const dayStart = Math.max(day, start), dayEnd = Math.min(day + MINUTES_PER_DAY, end);
     if (isSundayOrHoliday(date)) {
+      calendarRateBoundary = true;
       const pauseMinutes = pause ? Math.max(0, Math.min(dayEnd, pause[1]) - Math.max(dayStart, pause[0])) : 0;
-      buckets.tier2 += dayEnd - dayStart - pauseMinutes;
+      add('tier2', dayEnd - dayStart - pauseMinutes);
       continue;
     }
     // ATL § 11: an eve's highest rate runs until the same time the next day.
@@ -187,6 +194,7 @@ function atlTimeBuckets(entry, normalDate, hasSchedule, actualBounds = null) {
     const followsEve = specialEves.includes(addDays(date, -1).slice(5));
     const eveBoundary = day + (normalClock ?? 360);
     const halfDay = ['05-01', '06-05'].includes(date.slice(5));
+    if (isEve || followsEve || halfDay) calendarRateBoundary = true;
     const noon = day + 720;
     const cuts = [dayStart, dayEnd];
     if (isEve || followsEve) cuts.push(eveBoundary);
@@ -199,13 +207,13 @@ function atlTimeBuckets(entry, normalDate, hasSchedule, actualBounds = null) {
       const middle = (from + to) / 2;
       if (pause && middle >= pause[0] && middle < pause[1]) continue;
       if ((isEve && middle >= eveBoundary) || (followsEve && middle < eveBoundary) || (hasSchedule && middle >= tier2Start)) {
-        buckets.tier2 += to - from;
+        add('tier2', to - from);
       } else if (hasSchedule && ((middle >= normalStart - 60 && middle < normalStart) || middle >= normalEnd)) {
-        buckets.tier1 += to - from;
+        add('tier1', to - from);
       } else if ((halfDay && middle >= noon) || (hasSchedule && middle < normalStart - 60)) {
-        buckets.unclassified += to - from;
+        add('unclassified', to - from);
       } else {
-        buckets.regular += to - from;
+        add('regular', to - from);
       }
     }
   }
@@ -219,7 +227,18 @@ function atlTimeBuckets(entry, normalDate, hasSchedule, actualBounds = null) {
     buckets[key] -= deducted;
     remainingPause -= deducted;
   }
-  return {buckets, pauseUncertain};
+  // The source's net duration can differ from minute-only clock labels. Keep
+  // those clock labels intact and reconcile the final worked segments separately
+  // from breaks. Never turn the source discrepancy into an invented pause.
+  let precisionDifference = Math.max(0, rawShiftMinutes(entry) - shiftMinutes(entry));
+  const precisionUncertain = precisionDifference > 0 && (!actualBounds || calendarRateBoundary) && Object.values(buckets).filter(minutes => minutes > 0).length > 1;
+  for (const segment of segments.reverse()) {
+    const deducted = Math.min(precisionDifference, segment.minutes, buckets[segment.key]);
+    buckets[segment.key] -= deducted;
+    precisionDifference -= deducted;
+    if (precisionDifference <= 0) break;
+  }
+  return {buckets, pauseUncertain, precisionUncertain};
 }
 
 export function calculateAll(state) {
@@ -278,6 +297,7 @@ export function calculateAll(state) {
       const knownManualQuantity = (override || legacy || restAllocation && restRule === 'tier2') && (restDay || extraDay || (legacy && !overtime));
       if (atl && !hasSchedule && !fullyClassified && !knownManualQuantity) warnings.push('Normale start- og sluttider mangler. Overarbejdet kan kræve manuel kontrol.');
       if (timed?.pauseUncertain) warnings.push('Pausens placering er ukendt. Pausen er trukket fra de højeste satser først.');
+      if (timed?.precisionUncertain) warnings.push('Timemaps nettotid afviger fra klokkeslættene. Forskellen er trukket fra sidst på vagten; kontrollér fordelingen ved faste mødetider.');
       if (!override && restAllocation && restRule === 'review') warnings.push('Alle timer er overarbejde på fridagen. Vælg satsfordelingen på jobbet, eller angiv minutter på sats 2 efter jeres aftale.');
       if (!override && timed && !(restAllocation && restRule === 'tier2') && positiveRemainder(overtime - timed.buckets.tier1 - timed.buckets.tier2)) {
         warnings.push('Satsen for en del af overarbejdet skal bekræftes. Disse minutter er beregnet på sats 1.');
@@ -409,6 +429,9 @@ export function validateEntry(entry, state, skipConflicts = false) {
   if (!ENTRY_TYPES.includes(entry.type)) errors.push('Vælg en gyldig registreringstype.');
   if (own(entry, 'restDay') && typeof entry.restDay !== 'boolean') errors.push('Hviledag skal være markeret som ja eller nej.');
   if (own(entry, 'overtimeBasis') && !['actualStart', 'fixedSchedule'].includes(entry.overtimeBasis)) errors.push('Vælg et gyldigt grundlag for beregning af overarbejde.');
+  if (own(entry, 'recordedWorkMinutes') || own(entry, 'workTimeSource')) {
+    if (entry.type !== 'work' || entry.workTimeSource !== 'timemap' || !Number.isInteger(entry.recordedWorkMinutes) || entry.recordedWorkMinutes <= 0 || entry.recordedWorkMinutes > rawShiftMinutes(entry)) errors.push('Timemaps arbejdstid skal være et helt antal minutter over 0 og højst vagtens tid efter pause.');
+  }
   if (entry.type === 'work' && entry.overtimeBasis === 'fixedSchedule' && !hasNormalHours(entry)) errors.push('Fast mødetid kræver normal start og slut.');
   if (own(entry, 'overtimeTier2Minutes')) {
     const minutes = entry.overtimeTier2Minutes;
@@ -434,7 +457,7 @@ export function validateEntry(entry, state, skipConflicts = false) {
     if (timeValue(entry.start) === null || timeValue(entry.end) === null) errors.push('Indtast gyldige start- og sluttider.');
     else if (entry.start === entry.end) errors.push('Start og slut må ikke være ens.');
     if (!numeric(entry.breakMinutes) || entry.breakMinutes < 0 || entry.breakMinutes > 1439) errors.push('Pause skal være et positivt antal minutter eller 0.');
-    if (timeValue(entry.start) !== null && timeValue(entry.end) !== null && shiftMinutes(entry) <= 0) errors.push('Pausen skal være kortere end vagten.');
+    if (timeValue(entry.start) !== null && timeValue(entry.end) !== null && rawShiftMinutes(entry) <= 0) errors.push('Pausen skal være kortere end vagten.');
     if (!numeric(entry.empties) || entry.empties < 0 || !Number.isInteger(entry.empties)) errors.push('Tømninger skal være et helt tal på 0 eller mere.');
     if (!['alone', 'colleague', 'substitute', 'temp', 'Alene', 'Med kollega', 'Afløser', 'Vikar'].includes(entry.crew)) errors.push('Vælg bemanding.');
     if (!Array.isArray(entry.waste) || entry.waste.some(waste => !WASTE_TYPES.includes(waste))) errors.push('Vælg gyldige affaldstyper.');
@@ -470,12 +493,12 @@ export function validateEntry(entry, state, skipConflicts = false) {
 // Import only recognized keys and primitives. Unknown keys are rejected, including
 // prototype-like names, so backups cannot smuggle unrelated application state.
 const JOB_KEYS = ['id', 'name', 'employer', 'role', 'employment', 'startDate', 'scheme', 'weekdayHours', 'fridayHours', 'hourlyRate', 'overtimeRate', 'overtimeRate2', 'overtimeRateType', 'restDayOvertimeRule', 'overtimeRule', 'normalStart', 'normalEnd', 'periodType', 'periodAnchor', 'payday', 'paydayOffset', 'pensionEmployee', 'pensionEmployer', 'pensionBase', 'holidayPercent', 'choicePercent', 'holidayDays', 'freeHolidayDays', 'sickPayPercent', 'notes'];
-const ENTRY_KEYS = ['id', 'date', 'jobId', 'type', 'scheme', 'start', 'end', 'normalDate', 'normalStart', 'normalEnd', 'breakMinutes', 'breakStart', 'vehicle', 'route', 'crew', 'driver', 'colleague', 'planId', 'timerId', 'empties', 'waste', 'extras', 'notes', 'restDay', 'photos', 'overtimeTier2Minutes', 'overtimeBasis'];
+const ENTRY_KEYS = ['id', 'date', 'jobId', 'type', 'scheme', 'start', 'end', 'normalDate', 'normalStart', 'normalEnd', 'breakMinutes', 'breakStart', 'vehicle', 'route', 'crew', 'driver', 'colleague', 'planId', 'timerId', 'empties', 'waste', 'extras', 'notes', 'restDay', 'photos', 'overtimeTier2Minutes', 'overtimeBasis', 'recordedWorkMinutes', 'workTimeSource'];
 const EXTRA_KEYS = ['id', 'kind', 'task', 'minutes', 'vehicle', 'forVehicle', 'from', 'to', 'address', 'waste', 'container', 'paidOvertime'];
 const PLAN_KEYS = ['id', 'date', 'from', 'to', 'weekdays', 'jobId', 'scheme', 'title', 'start', 'end', 'vehicle', 'route', 'notes', 'driver', 'colleague', 'crew', 'people', 'kind', 'source', 'restDay'];
 const PLAN_SOURCE_KEYS = ['type', 'fileName', 'fileHash', 'page', 'row', 'importedAt', 'week', 'year'];
 const ROUTE_TEMPLATE_KEYS = ['id', 'name', 'weekParity', 'weekday', 'vehicle', 'waste', 'empties'];
-const PAYSLIP_KEYS = ['id', 'jobId', 'periodStart', 'periodEnd', 'payday', 'grossPay', 'netPay', 'sickHours', 'sickPay', 'notes'];
+const PAYSLIP_KEYS = ['id', 'jobId', 'periodStart', 'periodEnd', 'payday', 'grossPay', 'netPay', 'sickHours', 'sickPay', 'notes', 'baseHours', 'overtimeTier1Hours', 'overtimeTier2Hours'];
 const PREFERENCE_KEYS = ['compact', 'defaultBreakMinutes', 'defaultStart', 'defaultEnd', 'defaultRouteId', 'reduceMotion', 'theme', 'navigation', 'startupView', ...PREFERENCE_VISIBILITY_KEYS];
 const TEXT_KEYS = ['id', 'name', 'employer', 'role', 'employment', 'startDate', 'scheme', 'periodType', 'periodAnchor', 'notes', 'date', 'jobId', 'type', 'start', 'end', 'vehicle', 'route', 'crew', 'driver', 'colleague', 'kind', 'task', 'forVehicle', 'from', 'to', 'address', 'container', 'title'];
 function schema(object, allowed, label, errors) {
@@ -598,9 +621,9 @@ export function validateState(data) {
         const periodKey = `${payslip.jobId}/${payslip.periodStart}/${payslip.periodEnd}/${payslip.payday}`;
         if (periods.has(periodKey)) errors.push(`${label}: lønudbetalingen findes allerede for denne periode og løndato.`);
         periods.add(periodKey);
-        for (const key of ['grossPay', 'netPay', 'sickHours', 'sickPay']) {
+        for (const key of ['grossPay', 'netPay', 'sickHours', 'sickPay', 'baseHours', 'overtimeTier1Hours', 'overtimeTier2Hours']) {
           if (!['grossPay', 'netPay'].includes(key) && !own(payslip, key)) continue;
-          if (!numeric(payslip[key]) || payslip[key] < 0 || payslip[key] > (key === 'sickHours' ? 744 : 100000000)) errors.push(`${label}: ${key === 'sickHours' ? 'sygetimer' : 'beløb'} skal være et gyldigt, positivt tal eller 0.`);
+          if (!numeric(payslip[key]) || payslip[key] < 0 || payslip[key] > (key.endsWith('Hours') ? 744 : 100000000)) errors.push(`${label}: ${key.endsWith('Hours') ? 'timer' : 'beløb'} skal være et gyldigt, positivt tal eller 0.`);
         }
       }
     }

@@ -76,6 +76,28 @@ function harness() {
 }
 const submitEvent = () => ({preventDefault() {}});
 
+test('editing a Timemap workday preserves source minutes for notes and clears them when shift times change', () => {
+  const {context}=harness();
+  const job=context.state.jobs[0];
+  const original={id:'source-work',type:'work',date:'2028-03-06',jobId:job.id,start:'06:00',end:'14:00',breakMinutes:0,recordedWorkMinutes:479,workTimeSource:'timemap'};
+  context.state.entries=[original];
+  const fields=Object.fromEntries(Object.entries({...original,notes:'Updated note',recordedWorkTime:'07:59'}).map(([key,value])=>[key,{value}]));
+  const form={fields,elements:fields,querySelectorAll:()=>[]};
+  assert.equal(context.readEntry(form,original.id).recordedWorkMinutes,479);
+  fields.recordedWorkTime.value='07:58';
+  assert.equal(context.readEntry(form,original.id).recordedWorkMinutes,478);
+  fields.recordedWorkTime.value='';
+  assert.equal('recordedWorkMinutes' in context.readEntry(form,original.id),false);
+  fields.recordedWorkTime.value='07:59';
+  for(const [key,value] of Object.entries({date:'2028-03-07',start:'05:59',end:'14:01',breakMinutes:'1',type:'sick'})) {
+    const prior=fields[key].value;fields[key].value=value;
+    const edited=context.readEntry(form,original.id);
+    assert.equal('recordedWorkMinutes' in edited,false,key);
+    assert.equal('workTimeSource' in edited,false,key);
+    fields[key].value=prior;
+  }
+});
+
 test('pay-period reports scope to the displayed contract while an unfiltered month includes all jobs', () => {
   const {context} = harness();
   const monthly = defaultJob({id: 'monthly', name: 'Monthly', periodType: 'month'});
